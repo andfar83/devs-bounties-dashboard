@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bounty Agent Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-noise"></div>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Bounty Ops</p>
+        <h1>Hybrid Agent Command Dashboard</h1>
+        <p class="sub">
+          One coordinated flow: discover, decide, build, submit.
+        </p>
+      </div>
+      <div class="controls">
+        <button id="reset-btn" class="btn btn-secondary">Reset</button>
+        <button id="tick-btn" class="btn btn-secondary">Run 1 Cycle</button>
+        <button id="sim-btn" class="btn btn-primary">Start Live Sim</button>
+        <button id="scrape-engine-btn" class="btn btn-secondary">Start Scrape Engine</button>
+        <button id="scrape-fast-btn" class="btn btn-secondary btn-mini">Fast Poll</button>
+        <button id="scrape-deep-btn" class="btn btn-secondary btn-mini">Deep Scan</button>
+        <button id="scrape-full-btn" class="btn btn-secondary btn-mini">Full Refresh</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel-agents">
+        <div class="panel-title-row">
+          <h2>Agents</h2>
+          <span id="last-update" class="meta">Last update: --</span>
+        </div>
+        <div id="agent-grid" class="agent-grid"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Flow View</h2>
+        <div id="flow-track" class="flow-track">
+          <div class="flow-step step-scout">
+            <p class="flow-label">Scout</p>
+            <p id="flow-scout" class="flow-value">0</p>
+            <p class="flow-help">Opportunities scanned</p>
+            <p id="scout-status" class="flow-meta">Scout status: Active</p>
+            <p id="scrape-cadence" class="flow-meta">Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h</p>
+            <p id="scrape-next" class="flow-meta">Next scrape: --</p>
+          </div>
+          <div class="flow-connector"></div>
+          <div class="flow-step step-feas">
+            <p class="flow-label">Feasibility</p>
+            <p id="flow-feas" class="flow-value">0</p>
+            <p class="flow-help">Shortlisted evaluations</p>
+          </div>
+          <div class="flow-connector"></div>
+          <div class="flow-step step-build">
+            <p class="flow-label">Builder</p>
+            <p id="flow-build" class="flow-value">0</p>
+            <p class="flow-help">Active implementations</p>
+          </div>
+          <div class="flow-connector"></div>
+          <div class="flow-step step-ops">
+            <p class="flow-label">Ops</p>
+            <p id="flow-ops" class="flow-value">0</p>
+            <p class="flow-help">Submission packets</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title-row">
+          <h2>Funding Funnel</h2>
+          <div class="controls">
+            <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
+            <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
+          </div>
+        </div>
+        <span id="track-status" class="meta">Tracking folder not connected.</span>
+        <div id="funnel-accordion" class="funnel"></div>
+        <div id="bounty-disclosure" class="report-output" aria-live="polite">
+          <p class="report-empty">Select a bounty row to view disclosure.</p>
+        </div>
+        <div id="report-output" class="report-output" aria-live="polite">
+          <p class="report-empty">No report generated yet.</p>
+        </div>
+        <div class="report-actions">
+          <button id="download-report-btn" class="btn btn-secondary btn-report" disabled>Download Excel Report</button>
+          <span id="report-save-status" class="meta">Generate a report first.</span>
+        </div>
+      </section>
+
+      <section class="panel panel-jobs">
+        <div class="panel-title-row">
+          <h2>Active Jobs</h2>
+          <select id="agent-filter" class="filter">
+            <option value="all">All Agents</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Agent</th>
+                <th>State</th>
+                <th>ETA</th>
+                <th>EV</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel panel-jobs">
+        <div class="panel-title-row">
+          <h2>Solved Bounties</h2>
+          <span id="solved-meta" class="meta">No solved bounties yet.</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Bounty</th>
+                <th>Site</th>
+                <th>Price</th>
+                <th>Pipeline</th>
+                <th>Folder Status</th>
+                <th>Solved At</th>
+              </tr>
+            </thead>
+            <tbody id="solved-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
