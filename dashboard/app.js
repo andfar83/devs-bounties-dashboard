@@ -208,7 +208,9 @@ function setAuthStatus(message, kind = "") {
 function setAuthLoading(isLoading) {
   authSignInBtn.disabled = isLoading;
   authSignUpBtn.disabled = isLoading;
-  authResendBtn.disabled = isLoading;
+  if (authResendBtn) {
+    authResendBtn.disabled = isLoading;
+  }
 }
 
 function setAccessState(isAuthenticated, email = "") {
@@ -224,12 +226,15 @@ function setAccessState(isAuthenticated, email = "") {
 function getAuthFormValues() {
   const email = (authEmailInput.value || "").trim().toLowerCase();
   const password = authPasswordInput.value || "";
-  const confirmPassword = authPasswordConfirmInput.value || "";
-  const comment = (authCommentInput.value || "").trim();
+  const confirmPassword = authPasswordConfirmInput ? authPasswordConfirmInput.value || "" : "";
+  const comment = authCommentInput ? (authCommentInput.value || "").trim() : "";
   return { email, password, confirmPassword, comment };
 }
 
 function setResendVisible(isVisible, email = "") {
+  if (!authResendBtn) {
+    return;
+  }
   authResendBtn.hidden = !isVisible;
   if (isVisible && email) {
     pendingVerificationEmail = email;
@@ -245,6 +250,9 @@ function isEmailNotConfirmedError(error) {
 }
 
 function setPasswordVisible(input, btn, visible) {
+  if (!input || !btn) {
+    return;
+  }
   input.type = visible ? "text" : "password";
   btn.textContent = visible ? "Hide" : "Show";
   btn.setAttribute("aria-pressed", visible ? "true" : "false");
@@ -365,8 +373,12 @@ async function handleSignIn() {
       await persistAuthComment(data?.user, comment);
     }
     setAccessState(true, data?.user?.email || email);
-    authCommentInput.value = "";
-    authPasswordConfirmInput.value = "";
+    if (authCommentInput) {
+      authCommentInput.value = "";
+    }
+    if (authPasswordConfirmInput) {
+      authPasswordConfirmInput.value = "";
+    }
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
       setResendVisible(true, email);
@@ -416,8 +428,12 @@ async function handleSignUp() {
       await persistAuthUserProfile(data.user);
       await persistAuthComment(data.user, comment);
       setAccessState(true, data.user?.email || email);
-      authCommentInput.value = "";
-      authPasswordConfirmInput.value = "";
+      if (authCommentInput) {
+        authCommentInput.value = "";
+      }
+      if (authPasswordConfirmInput) {
+        authPasswordConfirmInput.value = "";
+      }
       return;
     }
     setResendVisible(true, email);
@@ -1806,18 +1822,24 @@ authSignInBtn.addEventListener("click", async () => {
 authSignUpBtn.addEventListener("click", async () => {
   await handleSignUp();
 });
-authResendBtn.addEventListener("click", async () => {
-  await handleResendConfirmation();
-});
+if (authResendBtn) {
+  authResendBtn.addEventListener("click", async () => {
+    await handleResendConfirmation();
+  });
+}
 signOutBtn.addEventListener("click", async () => {
   await handleSignOut();
 });
-authPasswordToggleBtn.addEventListener("click", () => {
-  togglePasswordVisible(authPasswordInput, authPasswordToggleBtn);
-});
-authPasswordConfirmToggleBtn.addEventListener("click", () => {
-  togglePasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn);
-});
+if (authPasswordToggleBtn && authPasswordInput) {
+  authPasswordToggleBtn.addEventListener("click", () => {
+    togglePasswordVisible(authPasswordInput, authPasswordToggleBtn);
+  });
+}
+if (authPasswordConfirmToggleBtn && authPasswordConfirmInput) {
+  authPasswordConfirmToggleBtn.addEventListener("click", () => {
+    togglePasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn);
+  });
+}
 authPasswordInput.addEventListener("keydown", async (event) => {
   if (event.key !== "Enter") {
     return;
