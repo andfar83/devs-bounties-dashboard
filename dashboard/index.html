@@ -13,137 +13,173 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="bg-noise"></div>
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Bounty Ops</p>
-        <h1>Hybrid Agent Command Dashboard</h1>
-        <p class="sub">
-          One coordinated flow: discover, decide, build, submit.
+    <section id="auth-gate" class="auth-gate">
+      <div class="auth-card">
+        <p class="eyebrow">Secure Access</p>
+        <h1 class="auth-title">Bounty Ops Sign In</h1>
+        <p class="sub auth-sub">
+          Enter your Supabase project credentials once, then sign in with email and password.
         </p>
+        <div class="auth-grid">
+          <label class="auth-field">
+            <span>Supabase Project URL</span>
+            <input id="supabase-url" type="url" placeholder="https://YOUR-PROJECT.supabase.co" autocomplete="off" />
+          </label>
+          <label class="auth-field">
+            <span>Supabase Publishable / Anon Key</span>
+            <input id="supabase-key" type="password" placeholder="sb_publishable_... or anon key" autocomplete="off" />
+          </label>
+          <label class="auth-field">
+            <span>Email</span>
+            <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
+          </label>
+          <label class="auth-field">
+            <span>Password</span>
+            <input id="auth-password" type="password" placeholder="Your password" autocomplete="current-password" />
+          </label>
+        </div>
+        <div class="auth-actions">
+          <button id="auth-signin-btn" class="btn btn-primary">Sign In</button>
+          <button id="auth-signup-btn" class="btn btn-secondary">Create Account</button>
+        </div>
+        <p id="auth-status" class="meta auth-status">Not signed in.</p>
       </div>
-      <div class="controls">
-        <button id="reset-btn" class="btn btn-secondary">Reset</button>
-        <button id="tick-btn" class="btn btn-secondary">Run 1 Cycle</button>
-        <button id="sim-btn" class="btn btn-primary">Start Live Sim</button>
-        <button id="scrape-engine-btn" class="btn btn-secondary">Start Scrape Engine</button>
-        <button id="scrape-fast-btn" class="btn btn-secondary btn-mini">Fast Poll</button>
-        <button id="scrape-deep-btn" class="btn btn-secondary btn-mini">Deep Scan</button>
-        <button id="scrape-full-btn" class="btn btn-secondary btn-mini">Full Refresh</button>
-      </div>
-    </header>
+    </section>
 
-    <main class="layout">
-      <section class="panel panel-agents">
-        <div class="panel-title-row">
-          <h2>Agents</h2>
-          <span id="last-update" class="meta">Last update: --</span>
+    <div id="app-shell" hidden>
+      <div class="bg-noise"></div>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Bounty Ops</p>
+          <h1>Hybrid Agent Command Dashboard</h1>
+          <p class="sub">
+            One coordinated flow: discover, decide, build, submit.
+          </p>
         </div>
-        <div id="agent-grid" class="agent-grid"></div>
-      </section>
+        <div class="controls">
+          <button id="reset-btn" class="btn btn-secondary">Reset</button>
+          <button id="tick-btn" class="btn btn-secondary">Run 1 Cycle</button>
+          <button id="sim-btn" class="btn btn-primary">Start Live Sim</button>
+          <button id="scrape-engine-btn" class="btn btn-secondary">Start Scrape Engine</button>
+          <button id="scrape-fast-btn" class="btn btn-secondary btn-mini">Fast Poll</button>
+          <button id="scrape-deep-btn" class="btn btn-secondary btn-mini">Deep Scan</button>
+          <button id="scrape-full-btn" class="btn btn-secondary btn-mini">Full Refresh</button>
+          <button id="signout-btn" class="btn btn-secondary">Sign Out</button>
+        </div>
+      </header>
 
-      <section class="panel">
-        <h2>Flow View</h2>
-        <div id="flow-track" class="flow-track">
-          <div class="flow-step step-scout">
-            <p class="flow-label">Scout</p>
-            <p id="flow-scout" class="flow-value">0</p>
-            <p class="flow-help">Opportunities scanned</p>
-            <p id="scout-status" class="flow-meta">Scout status: Active</p>
-            <p id="scrape-cadence" class="flow-meta">Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h</p>
-            <p id="scrape-next" class="flow-meta">Next scrape: --</p>
+      <main class="layout">
+        <section class="panel panel-agents">
+          <div class="panel-title-row">
+            <h2>Agents</h2>
+            <span id="last-update" class="meta">Last update: --</span>
           </div>
-          <div class="flow-connector"></div>
-          <div class="flow-step step-feas">
-            <p class="flow-label">Feasibility</p>
-            <p id="flow-feas" class="flow-value">0</p>
-            <p class="flow-help">Shortlisted evaluations</p>
-          </div>
-          <div class="flow-connector"></div>
-          <div class="flow-step step-build">
-            <p class="flow-label">Builder</p>
-            <p id="flow-build" class="flow-value">0</p>
-            <p class="flow-help">Active implementations</p>
-          </div>
-          <div class="flow-connector"></div>
-          <div class="flow-step step-ops">
-            <p class="flow-label">Ops</p>
-            <p id="flow-ops" class="flow-value">0</p>
-            <p class="flow-help">Submission packets</p>
-          </div>
-        </div>
-      </section>
+          <div id="agent-grid" class="agent-grid"></div>
+        </section>
 
-      <section class="panel">
-        <div class="panel-title-row">
-          <h2>Funding Funnel</h2>
-          <div class="controls">
-            <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
-            <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
+        <section class="panel">
+          <h2>Flow View</h2>
+          <div id="flow-track" class="flow-track">
+            <div class="flow-step step-scout">
+              <p class="flow-label">Scout</p>
+              <p id="flow-scout" class="flow-value">0</p>
+              <p class="flow-help">Opportunities scanned</p>
+              <p id="scout-status" class="flow-meta">Scout status: Active</p>
+              <p id="scrape-cadence" class="flow-meta">Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h</p>
+              <p id="scrape-next" class="flow-meta">Next scrape: --</p>
+            </div>
+            <div class="flow-connector"></div>
+            <div class="flow-step step-feas">
+              <p class="flow-label">Feasibility</p>
+              <p id="flow-feas" class="flow-value">0</p>
+              <p class="flow-help">Shortlisted evaluations</p>
+            </div>
+            <div class="flow-connector"></div>
+            <div class="flow-step step-build">
+              <p class="flow-label">Builder</p>
+              <p id="flow-build" class="flow-value">0</p>
+              <p class="flow-help">Active implementations</p>
+            </div>
+            <div class="flow-connector"></div>
+            <div class="flow-step step-ops">
+              <p class="flow-label">Ops</p>
+              <p id="flow-ops" class="flow-value">0</p>
+              <p class="flow-help">Submission packets</p>
+            </div>
           </div>
-        </div>
-        <span id="track-status" class="meta">Tracking folder not connected.</span>
-        <div id="funnel-accordion" class="funnel"></div>
-        <div id="bounty-disclosure" class="report-output" aria-live="polite">
-          <p class="report-empty">Select a bounty row to view disclosure.</p>
-        </div>
-        <div id="report-output" class="report-output" aria-live="polite">
-          <p class="report-empty">No report generated yet.</p>
-        </div>
-        <div class="report-actions">
-          <button id="download-report-btn" class="btn btn-secondary btn-report" disabled>Download Excel Report</button>
-          <span id="report-save-status" class="meta">Generate a report first.</span>
-        </div>
-      </section>
+        </section>
 
-      <section class="panel panel-jobs">
-        <div class="panel-title-row">
-          <h2>Active Jobs</h2>
-          <select id="agent-filter" class="filter">
-            <option value="all">All Agents</option>
-          </select>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Job</th>
-                <th>Agent</th>
-                <th>State</th>
-                <th>ETA</th>
-                <th>EV</th>
-              </tr>
-            </thead>
-            <tbody id="jobs-body"></tbody>
-          </table>
-        </div>
-      </section>
+        <section class="panel">
+          <div class="panel-title-row">
+            <h2>Funding Funnel</h2>
+            <div class="controls">
+              <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
+              <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
+            </div>
+          </div>
+          <span id="track-status" class="meta">Tracking folder not connected.</span>
+          <div id="funnel-accordion" class="funnel"></div>
+          <div id="bounty-disclosure" class="report-output" aria-live="polite">
+            <p class="report-empty">Select a bounty row to view disclosure.</p>
+          </div>
+          <div id="report-output" class="report-output" aria-live="polite">
+            <p class="report-empty">No report generated yet.</p>
+          </div>
+          <div class="report-actions">
+            <button id="download-report-btn" class="btn btn-secondary btn-report" disabled>Download Excel Report</button>
+            <span id="report-save-status" class="meta">Generate a report first.</span>
+          </div>
+        </section>
 
-      <section class="panel panel-jobs">
-        <div class="panel-title-row">
-          <h2>Solved Bounties</h2>
-          <span id="solved-meta" class="meta">No solved bounties yet.</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Bounty</th>
-                <th>Site</th>
-                <th>Price</th>
-                <th>Pipeline</th>
-                <th>Folder Status</th>
-                <th>Solved At</th>
-              </tr>
-            </thead>
-            <tbody id="solved-body"></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
+        <section class="panel panel-jobs">
+          <div class="panel-title-row">
+            <h2>Active Jobs</h2>
+            <select id="agent-filter" class="filter">
+              <option value="all">All Agents</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Agent</th>
+                  <th>State</th>
+                  <th>ETA</th>
+                  <th>EV</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel panel-jobs">
+          <div class="panel-title-row">
+            <h2>Solved Bounties</h2>
+            <span id="solved-meta" class="meta">No solved bounties yet.</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Bounty</th>
+                  <th>Site</th>
+                  <th>Price</th>
+                  <th>Pipeline</th>
+                  <th>Folder Status</th>
+                  <th>Solved At</th>
+                </tr>
+              </thead>
+              <tbody id="solved-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

@@ -1,4 +1,6 @@
-﻿const LIVE_TICK_MS = 2200;
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const LIVE_TICK_MS = 2200;
 const FAST_POLL_MIN_MS = 5 * 60 * 1000;
 const FAST_POLL_MAX_MS = 15 * 60 * 1000;
 const DEEP_SCAN_MIN_MS = 30 * 60 * 1000;
@@ -144,6 +146,21 @@ let scrapeSchedule = {
   nextFullAt: null,
   lastRunMode: "none"
 };
+let supabaseClient = null;
+let authSubscription = null;
+
+const SUPABASE_CONFIG_KEY = "bountyops.supabase.config";
+
+const appShell = document.getElementById("app-shell");
+const authGate = document.getElementById("auth-gate");
+const supabaseUrlInput = document.getElementById("supabase-url");
+const supabaseKeyInput = document.getElementById("supabase-key");
+const authEmailInput = document.getElementById("auth-email");
+const authPasswordInput = document.getElementById("auth-password");
+const authSignInBtn = document.getElementById("auth-signin-btn");
+const authSignUpBtn = document.getElementById("auth-signup-btn");
+const authStatus = document.getElementById("auth-status");
+const signOutBtn = document.getElementById("signout-btn");
 
 const agentGrid = document.getElementById("agent-grid");
 const jobsBody = document.getElementById("jobs-body");
@@ -170,6 +187,186 @@ const trackStatus = document.getElementById("track-status");
 const bountyDisclosure = document.getElementById("bounty-disclosure");
 const solvedBody = document.getElementById("solved-body");
 const solvedMeta = document.getElementById("solved-meta");
+
+function readSupabaseConfig() {
+  try {
+    const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return {
+      url: typeof parsed.url === "string" ? parsed.url.trim() : "",
+      key: typeof parsed.key === "string" ? parsed.key.trim() : ""
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeSupabaseConfig(config) {
+  localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(config));
+}
+
+function normalizeSupabaseUrl(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function setAuthStatus(message, kind = "") {
+  authStatus.textContent = message;
+  authStatus.classList.remove("is-error", "is-ok");
+  if (kind === "error") {
+    authStatus.classList.add("is-error");
+  }
+  if (kind === "ok") {
+    authStatus.classList.add("is-ok");
+  }
+}
+
+function setAuthLoading(isLoading) {
+  authSignInBtn.disabled = isLoading;
+  authSignUpBtn.disabled = isLoading;
+}
+
+function setAccessState(isAuthenticated, email = "") {
+  appShell.hidden = !isAuthenticated;
+  authGate.hidden = isAuthenticated;
+  if (!isAuthenticated) {
+    setAuthStatus("Not signed in.");
+    return;
+  }
+  setAuthStatus(`Signed in as ${email || "user"}.`, "ok");
+}
+
+function getAuthFormValues() {
+  const url = normalizeSupabaseUrl(supabaseUrlInput.value || "");
+  const key = (supabaseKeyInput.value || "").trim();
+  const email = (authEmailInput.value || "").trim().toLowerCase();
+  const password = authPasswordInput.value || "";
+  return { url, key, email, password };
+}
+
+function ensureSupabaseClient(config) {
+  if (!config.url || !config.key) {
+    throw new Error("Provide Supabase Project URL and publishable/anon key.");
+  }
+
+  writeSupabaseConfig(config);
+  supabaseClient = createClient(config.url, config.key);
+
+  if (authSubscription) {
+    authSubscription.unsubscribe();
+  }
+
+  const { data } = supabaseClient.auth.onAuthStateChange((event, session) => {
+    const email = session?.user?.email || "";
+    if (event === "SIGNED_OUT" || !session) {
+      setAccessState(false);
+      return;
+    }
+    setAccessState(true, email);
+  });
+  authSubscription = data.subscription;
+  return supabaseClient;
+}
+
+async function bootstrapAuth() {
+  const saved = readSupabaseConfig();
+  if (saved?.url) {
+    supabaseUrlInput.value = saved.url;
+  }
+  if (saved?.key) {
+    supabaseKeyInput.value = saved.key;
+  }
+
+  if (!saved?.url || !saved?.key) {
+    setAccessState(false);
+    setAuthStatus("Enter Supabase URL/key, then sign in.");
+    return;
+  }
+
+  try {
+    ensureSupabaseClient(saved);
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) {
+      throw error;
+    }
+    const email = data?.session?.user?.email || "";
+    setAccessState(Boolean(data?.session), email);
+    if (!data?.session) {
+      setAuthStatus("Session not found. Sign in to continue.");
+    }
+  } catch (error) {
+    supabaseClient = null;
+    setAccessState(false);
+    setAuthStatus(`Auth init failed: ${error.message}`, "error");
+  }
+}
+
+async function handleSignIn() {
+  const { url, key, email, password } = getAuthFormValues();
+  if (!email || !password) {
+    setAuthStatus("Email and password are required.", "error");
+    return;
+  }
+
+  try {
+    setAuthLoading(true);
+    const client = ensureSupabaseClient({ url, key });
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) {
+      throw error;
+    }
+    setAccessState(true, data?.user?.email || email);
+  } catch (error) {
+    setAuthStatus(`Sign in failed: ${error.message}`, "error");
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
+async function handleSignUp() {
+  const { url, key, email, password } = getAuthFormValues();
+  if (!email || !password) {
+    setAuthStatus("Email and password are required.", "error");
+    return;
+  }
+
+  try {
+    setAuthLoading(true);
+    const client = ensureSupabaseClient({ url, key });
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) {
+      throw error;
+    }
+    if (data.session) {
+      setAccessState(true, data.user?.email || email);
+      return;
+    }
+    setAuthStatus("Account created. Check your email to verify, then sign in.", "ok");
+  } catch (error) {
+    setAuthStatus(`Sign up failed: ${error.message}`, "error");
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
+async function handleSignOut() {
+  if (!supabaseClient) {
+    setAccessState(false);
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signOut({ scope: "local" });
+  if (error) {
+    setAuthStatus(`Sign out failed: ${error.message}`, "error");
+    return;
+  }
+  setAccessState(false);
+}
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -1499,10 +1696,29 @@ createReportBtn.addEventListener("click", () => {
 downloadReportBtn.addEventListener("click", async () => {
   await saveExcelReport();
 });
+authSignInBtn.addEventListener("click", async () => {
+  await handleSignIn();
+});
+authSignUpBtn.addEventListener("click", async () => {
+  await handleSignUp();
+});
+signOutBtn.addEventListener("click", async () => {
+  await handleSignOut();
+});
+authPasswordInput.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  await handleSignIn();
+});
 
 window.addEventListener("beforeunload", () => {
   simRunning = false;
   stopSimulation();
+  if (authSubscription) {
+    authSubscription.unsubscribe();
+  }
 });
 
 initState();
@@ -1512,4 +1728,6 @@ setSimButtonState();
 setScrapeButtonState();
 setCadenceButtonsEnabled();
 setModeButtonActive(null);
+bootstrapAuth();
+
 

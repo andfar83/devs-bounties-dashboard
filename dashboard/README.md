@@ -62,3 +62,14 @@ The dashboard uses four synchronized views:
 ## Local Run
 
 Open `dashboard/index.html` in a browser, or serve the folder with a static server.
+
+## Supabase Auth Gate
+
+- The dashboard is now protected behind Supabase email/password auth.
+- On the sign-in screen, enter:
+  - `Supabase Project URL` (`https://<project-ref>.supabase.co`)
+  - `Supabase Publishable/Anon Key`
+  - your `email` + `password`
+- Use `Create Account` to register users from the same screen.
+- If your Supabase project has email confirmation enabled, users must verify email before first login.
+- Use `Sign Out` in the dashboard top bar to leave the session.
