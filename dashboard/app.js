@@ -155,12 +155,15 @@ const AUTH_EMAIL_REDIRECT_TO = window.location.origin;
 
 const appShell = document.getElementById("app-shell");
 const authGate = document.getElementById("auth-gate");
-const authEmailInput = document.getElementById("auth-email");
-const authPasswordInput = document.getElementById("auth-password");
-const authPasswordConfirmInput = document.getElementById("auth-password-confirm");
-const authPasswordToggleBtn = document.getElementById("auth-password-toggle");
-const authPasswordConfirmToggleBtn = document.getElementById("auth-password-confirm-toggle");
-const authCommentInput = document.getElementById("auth-comment");
+const signInEmailInput = document.getElementById("signin-email");
+const signInPasswordInput = document.getElementById("signin-password");
+const signInPasswordToggleBtn = document.getElementById("signin-password-toggle");
+const signUpEmailInput = document.getElementById("signup-email");
+const signUpPasswordInput = document.getElementById("signup-password");
+const signUpPasswordConfirmInput = document.getElementById("signup-password-confirm");
+const signUpPasswordToggleBtn = document.getElementById("signup-password-toggle");
+const signUpPasswordConfirmToggleBtn = document.getElementById("signup-password-confirm-toggle");
+const signUpCommentInput = document.getElementById("signup-comment");
 const authSignInBtn = document.getElementById("auth-signin-btn");
 const authSignUpBtn = document.getElementById("auth-signup-btn");
 const authResendBtn = document.getElementById("auth-resend-btn");
@@ -223,12 +226,20 @@ function setAccessState(isAuthenticated, email = "") {
   setAuthStatus(`Signed in as ${email || "user"}.`, "ok");
 }
 
-function getAuthFormValues() {
-  const email = (authEmailInput.value || "").trim().toLowerCase();
-  const password = authPasswordInput.value || "";
-  const confirmPassword = authPasswordConfirmInput ? authPasswordConfirmInput.value || "" : "";
-  const comment = authCommentInput ? (authCommentInput.value || "").trim() : "";
-  return { email, password, confirmPassword, comment };
+function getSignInValues() {
+  return {
+    email: (signInEmailInput?.value || "").trim().toLowerCase(),
+    password: signInPasswordInput?.value || ""
+  };
+}
+
+function getSignUpValues() {
+  return {
+    email: (signUpEmailInput?.value || "").trim().toLowerCase(),
+    password: signUpPasswordInput?.value || "",
+    confirmPassword: signUpPasswordConfirmInput?.value || "",
+    comment: (signUpCommentInput?.value || "").trim()
+  };
 }
 
 function setResendVisible(isVisible, email = "") {
@@ -354,7 +365,7 @@ async function bootstrapAuth() {
 }
 
 async function handleSignIn() {
-  const { email, password, comment } = getAuthFormValues();
+  const { email, password } = getSignInValues();
   if (!email || !password) {
     setAuthStatus("Email and password are required.", "error");
     return;
@@ -369,16 +380,7 @@ async function handleSignIn() {
       throw error;
     }
     await persistAuthUserProfile(data?.user);
-    if (comment) {
-      await persistAuthComment(data?.user, comment);
-    }
     setAccessState(true, data?.user?.email || email);
-    if (authCommentInput) {
-      authCommentInput.value = "";
-    }
-    if (authPasswordConfirmInput) {
-      authPasswordConfirmInput.value = "";
-    }
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
       setResendVisible(true, email);
@@ -392,7 +394,7 @@ async function handleSignIn() {
 }
 
 async function handleSignUp() {
-  const { email, password, confirmPassword, comment } = getAuthFormValues();
+  const { email, password, confirmPassword, comment } = getSignUpValues();
   if (!email || !password) {
     setAuthStatus("Email and password are required.", "error");
     return;
@@ -428,11 +430,11 @@ async function handleSignUp() {
       await persistAuthUserProfile(data.user);
       await persistAuthComment(data.user, comment);
       setAccessState(true, data.user?.email || email);
-      if (authCommentInput) {
-        authCommentInput.value = "";
+      if (signUpCommentInput) {
+        signUpCommentInput.value = "";
       }
-      if (authPasswordConfirmInput) {
-        authPasswordConfirmInput.value = "";
+      if (signUpPasswordConfirmInput) {
+        signUpPasswordConfirmInput.value = "";
       }
       return;
     }
@@ -446,7 +448,7 @@ async function handleSignUp() {
 }
 
 async function handleResendConfirmation() {
-  const email = (authEmailInput.value || pendingVerificationEmail || "").trim().toLowerCase();
+  const email = (signUpEmailInput?.value || pendingVerificationEmail || "").trim().toLowerCase();
   if (!email) {
     setAuthStatus("Enter your email first so we can resend confirmation.", "error");
     return;
@@ -1830,23 +1832,30 @@ if (authResendBtn) {
 signOutBtn.addEventListener("click", async () => {
   await handleSignOut();
 });
-if (authPasswordToggleBtn && authPasswordInput) {
-  authPasswordToggleBtn.addEventListener("click", () => {
-    togglePasswordVisible(authPasswordInput, authPasswordToggleBtn);
+if (signInPasswordToggleBtn && signInPasswordInput) {
+  signInPasswordToggleBtn.addEventListener("click", () => {
+    togglePasswordVisible(signInPasswordInput, signInPasswordToggleBtn);
   });
 }
-if (authPasswordConfirmToggleBtn && authPasswordConfirmInput) {
-  authPasswordConfirmToggleBtn.addEventListener("click", () => {
-    togglePasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn);
+if (signUpPasswordToggleBtn && signUpPasswordInput) {
+  signUpPasswordToggleBtn.addEventListener("click", () => {
+    togglePasswordVisible(signUpPasswordInput, signUpPasswordToggleBtn);
   });
 }
-authPasswordInput.addEventListener("keydown", async (event) => {
-  if (event.key !== "Enter") {
-    return;
-  }
-  event.preventDefault();
-  await handleSignIn();
-});
+if (signUpPasswordConfirmToggleBtn && signUpPasswordConfirmInput) {
+  signUpPasswordConfirmToggleBtn.addEventListener("click", () => {
+    togglePasswordVisible(signUpPasswordConfirmInput, signUpPasswordConfirmToggleBtn);
+  });
+}
+if (signInPasswordInput) {
+  signInPasswordInput.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    await handleSignIn();
+  });
+}
 
 window.addEventListener("beforeunload", () => {
   simRunning = false;
@@ -1864,8 +1873,9 @@ setScrapeButtonState();
 setCadenceButtonsEnabled();
 setModeButtonActive(null);
 setResendVisible(false);
-setPasswordVisible(authPasswordInput, authPasswordToggleBtn, false);
-setPasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn, false);
+setPasswordVisible(signInPasswordInput, signInPasswordToggleBtn, false);
+setPasswordVisible(signUpPasswordInput, signUpPasswordToggleBtn, false);
+setPasswordVisible(signUpPasswordConfirmInput, signUpPasswordConfirmToggleBtn, false);
 bootstrapAuth();
 
 

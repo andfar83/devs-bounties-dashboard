@@ -16,43 +16,66 @@
     <section id="auth-gate" class="auth-gate">
       <div class="auth-card">
         <p class="eyebrow">Secure Access</p>
-        <h1 class="auth-title">Bounty Ops Sign In</h1>
+        <h1 class="auth-title">Bounty Ops Access</h1>
         <p class="sub auth-sub">
-          Sign in with your email and password to access the dashboard.
+          Use the sign-in card if you already have credentials.
         </p>
-        <div class="auth-grid">
-          <label class="auth-field">
-            <span>Email</span>
-            <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
-          </label>
-          <label class="auth-field">
-            <span>Password</span>
-            <div class="password-wrap">
-              <input id="auth-password" type="password" placeholder="Your password" autocomplete="current-password" />
-              <button id="auth-password-toggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+        <div class="auth-cards">
+          <section class="auth-pane">
+            <h2 class="auth-pane-title">Sign In</h2>
+            <div class="auth-grid">
+              <label class="auth-field">
+                <span>Email</span>
+                <input id="signin-email" type="email" placeholder="you@example.com" autocomplete="email" />
+              </label>
+              <label class="auth-field">
+                <span>Password</span>
+                <div class="password-wrap">
+                  <input id="signin-password" type="password" placeholder="Your password" autocomplete="current-password" />
+                  <button id="signin-password-toggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+                </div>
+              </label>
             </div>
-          </label>
-          <label class="auth-field">
-            <span>Confirm password</span>
-            <div class="password-wrap">
-              <input id="auth-password-confirm" type="password" placeholder="Confirm your password" autocomplete="new-password" />
-              <button id="auth-password-confirm-toggle" class="password-toggle" type="button" aria-label="Show confirm password" aria-pressed="false">Show</button>
+            <div class="auth-actions">
+              <button id="auth-signin-btn" class="btn btn-primary">Sign In</button>
             </div>
-          </label>
-          <label class="auth-field">
-            <span>Comment (required for create account, optional for sign in)</span>
-            <textarea
-              id="auth-comment"
-              placeholder="Write a quick comment..."
-              maxlength="600"
-              rows="4"
-            ></textarea>
-          </label>
-        </div>
-        <div class="auth-actions">
-          <button id="auth-signin-btn" class="btn btn-primary">Sign In</button>
-          <button id="auth-signup-btn" class="btn btn-secondary">Create Account</button>
-          <button id="auth-resend-btn" class="btn btn-secondary" type="button" hidden>Resend Confirmation Email</button>
+          </section>
+          <section class="auth-pane">
+            <h2 class="auth-pane-title">Create Account</h2>
+            <div class="auth-grid">
+              <label class="auth-field">
+                <span>Email</span>
+                <input id="signup-email" type="email" placeholder="you@example.com" autocomplete="email" />
+              </label>
+              <label class="auth-field">
+                <span>Password</span>
+                <div class="password-wrap">
+                  <input id="signup-password" type="password" placeholder="Create password" autocomplete="new-password" />
+                  <button id="signup-password-toggle" class="password-toggle" type="button" aria-label="Show signup password" aria-pressed="false">Show</button>
+                </div>
+              </label>
+              <label class="auth-field">
+                <span>Confirm password</span>
+                <div class="password-wrap">
+                  <input id="signup-password-confirm" type="password" placeholder="Confirm your password" autocomplete="new-password" />
+                  <button id="signup-password-confirm-toggle" class="password-toggle" type="button" aria-label="Show confirm password" aria-pressed="false">Show</button>
+                </div>
+              </label>
+              <label class="auth-field">
+                <span>Comment (required)</span>
+                <textarea
+                  id="signup-comment"
+                  placeholder="Write a quick comment..."
+                  maxlength="600"
+                  rows="4"
+                ></textarea>
+              </label>
+            </div>
+            <div class="auth-actions">
+              <button id="auth-signup-btn" class="btn btn-secondary">Create Account</button>
+              <button id="auth-resend-btn" class="btn btn-secondary" type="button" hidden>Resend Confirmation Email</button>
+            </div>
+          </section>
         </div>
         <p id="auth-status" class="meta auth-status">Not signed in.</p>
       </div>
