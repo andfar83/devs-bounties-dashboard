@@ -18,29 +18,41 @@
         <p class="eyebrow">Secure Access</p>
         <h1 class="auth-title">Bounty Ops Sign In</h1>
         <p class="sub auth-sub">
-          Enter your Supabase project credentials once, then sign in with email and password.
+          Sign in with your email and password to access the dashboard.
         </p>
         <div class="auth-grid">
-          <label class="auth-field">
-            <span>Supabase Project URL</span>
-            <input id="supabase-url" type="url" placeholder="https://YOUR-PROJECT.supabase.co" autocomplete="off" />
-          </label>
-          <label class="auth-field">
-            <span>Supabase Publishable / Anon Key</span>
-            <input id="supabase-key" type="password" placeholder="sb_publishable_... or anon key" autocomplete="off" />
-          </label>
           <label class="auth-field">
             <span>Email</span>
             <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
           </label>
           <label class="auth-field">
             <span>Password</span>
-            <input id="auth-password" type="password" placeholder="Your password" autocomplete="current-password" />
+            <div class="password-wrap">
+              <input id="auth-password" type="password" placeholder="Your password" autocomplete="current-password" />
+              <button id="auth-password-toggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+          </label>
+          <label class="auth-field">
+            <span>Confirm password</span>
+            <div class="password-wrap">
+              <input id="auth-password-confirm" type="password" placeholder="Confirm your password" autocomplete="new-password" />
+              <button id="auth-password-confirm-toggle" class="password-toggle" type="button" aria-label="Show confirm password" aria-pressed="false">Show</button>
+            </div>
+          </label>
+          <label class="auth-field">
+            <span>Comment (required for create account, optional for sign in)</span>
+            <textarea
+              id="auth-comment"
+              placeholder="Write a quick comment..."
+              maxlength="600"
+              rows="4"
+            ></textarea>
           </label>
         </div>
         <div class="auth-actions">
           <button id="auth-signin-btn" class="btn btn-primary">Sign In</button>
           <button id="auth-signup-btn" class="btn btn-secondary">Create Account</button>
+          <button id="auth-resend-btn" class="btn btn-secondary" type="button" hidden>Resend Confirmation Email</button>
         </div>
         <p id="auth-status" class="meta auth-status">Not signed in.</p>
       </div>

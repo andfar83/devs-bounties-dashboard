@@ -149,18 +149,24 @@ let scrapeSchedule = {
 let supabaseClient = null;
 let authSubscription = null;
 
-const SUPABASE_CONFIG_KEY = "bountyops.supabase.config";
+const HARDWIRED_SUPABASE_URL = "https://mwniqoxghjquriybjdjs.supabase.co";
+const HARDWIRED_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_nsSUN_oXLl9VfFWCBglN-w_Pp_vcBb5";
+const AUTH_EMAIL_REDIRECT_TO = window.location.origin;
 
 const appShell = document.getElementById("app-shell");
 const authGate = document.getElementById("auth-gate");
-const supabaseUrlInput = document.getElementById("supabase-url");
-const supabaseKeyInput = document.getElementById("supabase-key");
 const authEmailInput = document.getElementById("auth-email");
 const authPasswordInput = document.getElementById("auth-password");
+const authPasswordConfirmInput = document.getElementById("auth-password-confirm");
+const authPasswordToggleBtn = document.getElementById("auth-password-toggle");
+const authPasswordConfirmToggleBtn = document.getElementById("auth-password-confirm-toggle");
+const authCommentInput = document.getElementById("auth-comment");
 const authSignInBtn = document.getElementById("auth-signin-btn");
 const authSignUpBtn = document.getElementById("auth-signup-btn");
+const authResendBtn = document.getElementById("auth-resend-btn");
 const authStatus = document.getElementById("auth-status");
 const signOutBtn = document.getElementById("signout-btn");
+let pendingVerificationEmail = "";
 
 const agentGrid = document.getElementById("agent-grid");
 const jobsBody = document.getElementById("jobs-body");
@@ -188,33 +194,6 @@ const bountyDisclosure = document.getElementById("bounty-disclosure");
 const solvedBody = document.getElementById("solved-body");
 const solvedMeta = document.getElementById("solved-meta");
 
-function readSupabaseConfig() {
-  try {
-    const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-    return {
-      url: typeof parsed.url === "string" ? parsed.url.trim() : "",
-      key: typeof parsed.key === "string" ? parsed.key.trim() : ""
-    };
-  } catch (error) {
-    return null;
-  }
-}
-
-function writeSupabaseConfig(config) {
-  localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(config));
-}
-
-function normalizeSupabaseUrl(value) {
-  return value.trim().replace(/\/+$/, "");
-}
-
 function setAuthStatus(message, kind = "") {
   authStatus.textContent = message;
   authStatus.classList.remove("is-error", "is-ok");
@@ -229,6 +208,7 @@ function setAuthStatus(message, kind = "") {
 function setAuthLoading(isLoading) {
   authSignInBtn.disabled = isLoading;
   authSignUpBtn.disabled = isLoading;
+  authResendBtn.disabled = isLoading;
 }
 
 function setAccessState(isAuthenticated, email = "") {
@@ -242,20 +222,44 @@ function setAccessState(isAuthenticated, email = "") {
 }
 
 function getAuthFormValues() {
-  const url = normalizeSupabaseUrl(supabaseUrlInput.value || "");
-  const key = (supabaseKeyInput.value || "").trim();
   const email = (authEmailInput.value || "").trim().toLowerCase();
   const password = authPasswordInput.value || "";
-  return { url, key, email, password };
+  const confirmPassword = authPasswordConfirmInput.value || "";
+  const comment = (authCommentInput.value || "").trim();
+  return { email, password, confirmPassword, comment };
 }
 
-function ensureSupabaseClient(config) {
-  if (!config.url || !config.key) {
-    throw new Error("Provide Supabase Project URL and publishable/anon key.");
+function setResendVisible(isVisible, email = "") {
+  authResendBtn.hidden = !isVisible;
+  if (isVisible && email) {
+    pendingVerificationEmail = email;
   }
+  if (!isVisible) {
+    pendingVerificationEmail = "";
+  }
+}
 
-  writeSupabaseConfig(config);
-  supabaseClient = createClient(config.url, config.key);
+function isEmailNotConfirmedError(error) {
+  const msg = (error?.message || "").toLowerCase();
+  return msg.includes("email not confirmed");
+}
+
+function setPasswordVisible(input, btn, visible) {
+  input.type = visible ? "text" : "password";
+  btn.textContent = visible ? "Hide" : "Show";
+  btn.setAttribute("aria-pressed", visible ? "true" : "false");
+}
+
+function togglePasswordVisible(input, btn) {
+  const nextVisible = input.type === "password";
+  setPasswordVisible(input, btn, nextVisible);
+}
+
+function ensureSupabaseClient() {
+  if (!HARDWIRED_SUPABASE_URL || !HARDWIRED_SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error("Supabase configuration is missing.");
+  }
+  supabaseClient = createClient(HARDWIRED_SUPABASE_URL, HARDWIRED_SUPABASE_PUBLISHABLE_KEY);
 
   if (authSubscription) {
     authSubscription.unsubscribe();
@@ -268,34 +272,69 @@ function ensureSupabaseClient(config) {
       return;
     }
     setAccessState(true, email);
+    void persistAuthUserProfile(session.user);
   });
   authSubscription = data.subscription;
   return supabaseClient;
 }
 
-async function bootstrapAuth() {
-  const saved = readSupabaseConfig();
-  if (saved?.url) {
-    supabaseUrlInput.value = saved.url;
-  }
-  if (saved?.key) {
-    supabaseKeyInput.value = saved.key;
-  }
-
-  if (!saved?.url || !saved?.key) {
-    setAccessState(false);
-    setAuthStatus("Enter Supabase URL/key, then sign in.");
+async function persistAuthUserProfile(user) {
+  if (!supabaseClient || !user?.id) {
     return;
   }
 
+  const profileRow = {
+    id: user.id,
+    email: user.email || null,
+    last_login_at: new Date().toISOString()
+  };
+
+  const { error } = await supabaseClient.from("user_profiles").upsert(profileRow, { onConflict: "id" });
+  if (error) {
+    console.warn("user_profiles upsert failed:", error.message);
+  }
+}
+
+async function persistAuthComment(user, comment) {
+  if (!supabaseClient || !user?.id || !comment) {
+    return;
+  }
+
+  const cleanComment = comment.trim().slice(0, 600);
+  if (!cleanComment) {
+    return;
+  }
+
+  const { error: commentError } = await supabaseClient.from("user_comments").insert({
+    user_id: user.id,
+    email: user.email || null,
+    comment: cleanComment
+  });
+  if (commentError) {
+    console.warn("user_comments insert failed:", commentError.message);
+  }
+
+  const { error: profileError } = await supabaseClient
+    .from("user_profiles")
+    .update({ latest_comment: cleanComment, last_login_at: new Date().toISOString() })
+    .eq("id", user.id);
+  if (profileError) {
+    console.warn("user_profiles latest_comment update failed:", profileError.message);
+  }
+}
+
+async function bootstrapAuth() {
   try {
-    ensureSupabaseClient(saved);
+    ensureSupabaseClient();
     const { data, error } = await supabaseClient.auth.getSession();
     if (error) {
       throw error;
     }
     const email = data?.session?.user?.email || "";
     setAccessState(Boolean(data?.session), email);
+    if (data?.session?.user) {
+      await persistAuthUserProfile(data.session.user);
+    }
     if (!data?.session) {
       setAuthStatus("Session not found. Sign in to continue.");
     }
@@ -307,7 +346,7 @@ async function bootstrapAuth() {
 }
 
 async function handleSignIn() {
-  const { url, key, email, password } = getAuthFormValues();
+  const { email, password, comment } = getAuthFormValues();
   if (!email || !password) {
     setAuthStatus("Email and password are required.", "error");
     return;
@@ -315,40 +354,105 @@ async function handleSignIn() {
 
   try {
     setAuthLoading(true);
-    const client = ensureSupabaseClient({ url, key });
+    setResendVisible(false);
+    const client = ensureSupabaseClient();
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) {
       throw error;
     }
+    await persistAuthUserProfile(data?.user);
+    if (comment) {
+      await persistAuthComment(data?.user, comment);
+    }
     setAccessState(true, data?.user?.email || email);
+    authCommentInput.value = "";
+    authPasswordConfirmInput.value = "";
   } catch (error) {
-    setAuthStatus(`Sign in failed: ${error.message}`, "error");
+    if (isEmailNotConfirmedError(error)) {
+      setResendVisible(true, email);
+      setAuthStatus("Email not confirmed yet. Check your inbox or click 'Resend Confirmation Email'.", "error");
+    } else {
+      setAuthStatus(`Sign in failed: ${error.message}`, "error");
+    }
   } finally {
     setAuthLoading(false);
   }
 }
 
 async function handleSignUp() {
-  const { url, key, email, password } = getAuthFormValues();
+  const { email, password, confirmPassword, comment } = getAuthFormValues();
   if (!email || !password) {
     setAuthStatus("Email and password are required.", "error");
+    return;
+  }
+  if (!confirmPassword) {
+    setAuthStatus("Please confirm your password.", "error");
+    return;
+  }
+  if (password !== confirmPassword) {
+    setAuthStatus("Password and confirmation do not match.", "error");
+    return;
+  }
+  if (!comment) {
+    setAuthStatus("Please leave a comment before entering.", "error");
     return;
   }
 
   try {
     setAuthLoading(true);
-    const client = ensureSupabaseClient({ url, key });
-    const { data, error } = await client.auth.signUp({ email, password });
+    setResendVisible(false);
+    const client = ensureSupabaseClient();
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: AUTH_EMAIL_REDIRECT_TO
+      }
+    });
     if (error) {
       throw error;
     }
     if (data.session) {
+      await persistAuthUserProfile(data.user);
+      await persistAuthComment(data.user, comment);
       setAccessState(true, data.user?.email || email);
+      authCommentInput.value = "";
+      authPasswordConfirmInput.value = "";
       return;
     }
+    setResendVisible(true, email);
     setAuthStatus("Account created. Check your email to verify, then sign in.", "ok");
   } catch (error) {
     setAuthStatus(`Sign up failed: ${error.message}`, "error");
+  } finally {
+    setAuthLoading(false);
+  }
+}
+
+async function handleResendConfirmation() {
+  const email = (authEmailInput.value || pendingVerificationEmail || "").trim().toLowerCase();
+  if (!email) {
+    setAuthStatus("Enter your email first so we can resend confirmation.", "error");
+    return;
+  }
+
+  try {
+    setAuthLoading(true);
+    const client = ensureSupabaseClient();
+    const { error } = await client.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: AUTH_EMAIL_REDIRECT_TO
+      }
+    });
+    if (error) {
+      throw error;
+    }
+    setResendVisible(true, email);
+    setAuthStatus("Confirmation email re-sent. Check inbox/spam, confirm, then sign in.", "ok");
+  } catch (error) {
+    setAuthStatus(`Could not resend confirmation: ${error.message}`, "error");
   } finally {
     setAuthLoading(false);
   }
@@ -1702,8 +1806,17 @@ authSignInBtn.addEventListener("click", async () => {
 authSignUpBtn.addEventListener("click", async () => {
   await handleSignUp();
 });
+authResendBtn.addEventListener("click", async () => {
+  await handleResendConfirmation();
+});
 signOutBtn.addEventListener("click", async () => {
   await handleSignOut();
+});
+authPasswordToggleBtn.addEventListener("click", () => {
+  togglePasswordVisible(authPasswordInput, authPasswordToggleBtn);
+});
+authPasswordConfirmToggleBtn.addEventListener("click", () => {
+  togglePasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn);
 });
 authPasswordInput.addEventListener("keydown", async (event) => {
   if (event.key !== "Enter") {
@@ -1728,6 +1841,9 @@ setSimButtonState();
 setScrapeButtonState();
 setCadenceButtonsEnabled();
 setModeButtonActive(null);
+setResendVisible(false);
+setPasswordVisible(authPasswordInput, authPasswordToggleBtn, false);
+setPasswordVisible(authPasswordConfirmInput, authPasswordConfirmToggleBtn, false);
 bootstrapAuth();
 
 

@@ -69,7 +69,51 @@ body {
   padding: 0.58rem 0.65rem;
 }
 
+.auth-field textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(7, 17, 25, 0.82);
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  padding: 0.58rem 0.65rem;
+  resize: vertical;
+  min-height: 88px;
+}
+
+.password-wrap {
+  position: relative;
+}
+
+.password-wrap input {
+  padding-right: 4.6rem;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 18, 27, 0.9);
+  color: #cde2f1;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  padding: 0.24rem 0.5rem;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  transform: translateY(-50%) translateY(-1px);
+}
+
 .auth-field input:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.75);
+  outline-offset: 1px;
+}
+
+.auth-field textarea:focus-visible {
   outline: 2px solid rgba(125, 211, 252, 0.75);
   outline-offset: 1px;
 }
@@ -83,6 +127,10 @@ body {
 
 .auth-status {
   margin: 0.8rem 0 0;
+}
+
+#auth-resend-btn[hidden] {
+  display: none;
 }
 
 .auth-status.is-error {

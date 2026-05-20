@@ -66,10 +66,18 @@ Open `dashboard/index.html` in a browser, or serve the folder with a static serv
 ## Supabase Auth Gate
 
 - The dashboard is now protected behind Supabase email/password auth.
-- On the sign-in screen, enter:
-  - `Supabase Project URL` (`https://<project-ref>.supabase.co`)
-  - `Supabase Publishable/Anon Key`
-  - your `email` + `password`
+- Supabase is hard-wired to project `DEV-BOUNTIES` (`mwniqoxghjquriybjdjs`) in `andfar83's Org`.
+- On the sign-in screen, users enter `email` + `password` and a required comment.
 - Use `Create Account` to register users from the same screen.
 - If your Supabase project has email confirmation enabled, users must verify email before first login.
 - Use `Sign Out` in the dashboard top bar to leave the session.
+- Run [`supabase-user-profiles.sql`](./supabase-user-profiles.sql) in Supabase SQL Editor once:
+  - creates `public.user_profiles`,
+  - enables RLS,
+  - allows authenticated users to insert/select/update only their own row.
+- After this setup, each successful sign in/session restore upserts:
+  - `id` (auth user id),
+  - `email`,
+  - `last_login_at`,
+  - `latest_comment` (when provided on auth submit).
+- Every auth comment is also stored in `public.user_comments` with timestamp.
