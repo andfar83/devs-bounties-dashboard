@@ -131,6 +131,7 @@ let simTimer = null;
 let simRunning = false;
 let lastCycleAt = null;
 let scrapeEngineRunning = false;
+let scrapeEngineButtonFocused = false;
 let scoutWorkingUntil = 0;
 let lastScrapeModeKey = null;
 let reportsDirHandle = null;
@@ -140,6 +141,7 @@ let selectedBountyId = null;
 const archivedBountyIds = new Set();
 const archiveInFlightIds = new Set();
 let solvedBounties = [];
+const agentWorkStartedAt = new Map();
 let scrapeSchedule = {
   nextFastAt: null,
   nextDeepAt: null,
@@ -749,6 +751,7 @@ function clearStateForSimulation() {
   funnel = computeFunnelSummary(bountyRecords);
   activeFunnelStage = "discovered";
   selectedBountyId = null;
+  agentWorkStartedAt.clear();
   archivedBountyIds.clear();
   archiveInFlightIds.clear();
   solvedBounties = [];
@@ -805,6 +808,41 @@ function getAgentRuntimeState(agent) {
   return { label: "Standby", lightClass: "light-standby" };
 }
 
+function formatAgentWorkTime(startedAt) {
+  if (!startedAt) {
+    return "00:00";
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
+  const seconds = (elapsedSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function agentLoaderMarkup(agentId, isWorking) {
+  if (!isWorking) {
+    agentWorkStartedAt.delete(agentId);
+    return "";
+  }
+
+  if (!agentWorkStartedAt.has(agentId)) {
+    agentWorkStartedAt.set(agentId, Date.now());
+  }
+
+  return `
+    <div class="agent-work-indicator" aria-label="Agent working">
+      <div class="spinner" aria-hidden="true">
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+        <div></div>
+      </div>
+      <span class="agent-work-time">${formatAgentWorkTime(agentWorkStartedAt.get(agentId))}</span>
+    </div>
+  `;
+}
+
 function getAgentStats(agentId) {
   const discovered = funnel.discovered || 0;
   const shortlisted = funnel.shortlisted || 0;
@@ -831,6 +869,7 @@ function renderAgents() {
   agentGrid.innerHTML = "";
   for (const agent of agents) {
     const runtime = getAgentRuntimeState(agent);
+    const isWorking = runtime.label === "Working";
     const functionMarkup = agent.functions.map((item) => `<li>${item}</li>`).join("");
     const stats = getAgentStats(agent.id);
     const card = document.createElement("article");
@@ -843,7 +882,10 @@ function renderAgents() {
           <p class="agent-name">${agent.name}</p>
           <p class="agent-role">${agent.role}</p>
         </div>
-        <span class="pill">${agent.mood}</span>
+        <div class="agent-head-tools">
+          ${agentLoaderMarkup(agent.id, isWorking)}
+          <span class="pill">${agent.mood}</span>
+        </div>
       </div>
       <p class="agent-runtime">
         <span class="agent-light ${runtime.lightClass}"></span>
@@ -1589,22 +1631,19 @@ function startSimulationTimer() {
   simTimer = setInterval(runScheduler, 1000);
 }
 
-function setSimButtonState() {
-  if (simRunning) {
-    simBtn.textContent = "Stop Live Sim";
-    return;
-  }
+function syncLaunchButtonStates() {
+  simBtn.textContent = simRunning ? "Stop Live Sim" : "Start Live Sim";
+  scrapeEngineBtn.textContent = scrapeEngineRunning ? "Stop Scrape Engine" : "Start Scrape Engine";
+  simBtn.classList.toggle("btn-launch-active", simRunning && !scrapeEngineButtonFocused);
+  scrapeEngineBtn.classList.toggle("btn-launch-active", scrapeEngineButtonFocused);
+}
 
-  simBtn.textContent = "Start Live Sim";
+function setSimButtonState() {
+  syncLaunchButtonStates();
 }
 
 function setScrapeButtonState() {
-  if (scrapeEngineRunning) {
-    scrapeEngineBtn.textContent = "Stop Scrape Engine";
-    return;
-  }
-
-  scrapeEngineBtn.textContent = "Start Scrape Engine";
+  syncLaunchButtonStates();
 }
 
 function setCadenceButtonsEnabled() {
@@ -1623,6 +1662,7 @@ function runCadenceClick(mode) {
 
   if (!scrapeEngineRunning) {
     scrapeEngineRunning = true;
+    scrapeEngineButtonFocused = false;
     seedScrapeSchedule(Date.now());
     scrapeSchedule.lastRunMode = "Scheduled";
     setScrapeButtonState();
@@ -1679,6 +1719,7 @@ function toggleScrapeEngine() {
   }
 
   scrapeEngineRunning = !scrapeEngineRunning;
+  scrapeEngineButtonFocused = scrapeEngineRunning;
   if (scrapeEngineRunning) {
     seedScrapeSchedule(Date.now());
     scrapeSchedule.lastRunMode = "Scheduled";
@@ -1686,6 +1727,7 @@ function toggleScrapeEngine() {
     scheduleNextFast(Date.now());
   } else {
     scrapeSchedule.lastRunMode = "Stopped";
+    scrapeEngineButtonFocused = false;
     scoutWorkingUntil = 0;
     lastScrapeModeKey = null;
     setModeButtonActive(null);
@@ -1698,6 +1740,7 @@ function toggleScrapeEngine() {
 function resetDashboard() {
   simRunning = false;
   scrapeEngineRunning = false;
+  scrapeEngineButtonFocused = false;
   scoutWorkingUntil = 0;
   lastScrapeModeKey = null;
   stopSimulation();
@@ -1767,6 +1810,7 @@ simBtn.addEventListener("click", () => {
     renderAll();
   } else {
     scrapeEngineRunning = false;
+    scrapeEngineButtonFocused = false;
     scoutWorkingUntil = 0;
     lastScrapeModeKey = null;
     stopSimulation();
