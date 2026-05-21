@@ -226,11 +226,13 @@ h1 {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: transform 160ms ease, opacity 160ms ease;
+  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
-.btn:hover {
-  transform: translateY(-1px);
+.btn:not(:disabled):hover {
+  transform: translateY(-2px);
+  border-color: rgba(125, 211, 252, 0.85);
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.25), 0 0 18px rgba(0, 194, 168, 0.18);
 }
 
 .btn-primary {
@@ -249,11 +251,18 @@ h1 {
   font-size: 0.72rem;
 }
 
+.btn-launch,
 .btn-mode-active {
   background: linear-gradient(90deg, rgba(0, 166, 251, 0.28), rgba(0, 194, 168, 0.28));
   border-color: rgba(125, 211, 252, 0.9);
   color: #dff6ff;
   box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.35), 0 0 14px rgba(0, 194, 168, 0.25);
+}
+
+.btn-launch:not(:disabled):hover,
+.btn-mode-active:not(:disabled):hover {
+  background: linear-gradient(90deg, rgba(0, 166, 251, 0.38), rgba(0, 194, 168, 0.38));
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.5), 0 0 22px rgba(0, 194, 168, 0.32);
 }
 
 .layout {
