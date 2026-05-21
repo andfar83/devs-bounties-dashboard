@@ -179,7 +179,6 @@ const scrapeEngineBtn = document.getElementById("scrape-engine-btn");
 const scrapeFastBtn = document.getElementById("scrape-fast-btn");
 const scrapeDeepBtn = document.getElementById("scrape-deep-btn");
 const scrapeFullBtn = document.getElementById("scrape-full-btn");
-const tickBtn = document.getElementById("tick-btn");
 const resetBtn = document.getElementById("reset-btn");
 const lastUpdate = document.getElementById("last-update");
 const scoutStatus = document.getElementById("scout-status");
@@ -219,6 +218,10 @@ function setAuthLoading(isLoading) {
 function setAccessState(isAuthenticated, email = "") {
   appShell.hidden = !isAuthenticated;
   authGate.hidden = isAuthenticated;
+  // Defensive visibility control: some CSS display rules can override [hidden].
+  // Force explicit display state so auth overlay cannot mask the dashboard.
+  appShell.style.display = isAuthenticated ? "" : "none";
+  authGate.style.display = isAuthenticated ? "none" : "";
   if (!isAuthenticated) {
     setAuthStatus("Not signed in.");
     return;
@@ -1589,27 +1592,19 @@ function startSimulationTimer() {
 function setSimButtonState() {
   if (simRunning) {
     simBtn.textContent = "Stop Live Sim";
-    simBtn.classList.remove("btn-primary");
-    simBtn.classList.add("btn-secondary");
     return;
   }
 
   simBtn.textContent = "Start Live Sim";
-  simBtn.classList.remove("btn-secondary");
-  simBtn.classList.add("btn-primary");
 }
 
 function setScrapeButtonState() {
   if (scrapeEngineRunning) {
     scrapeEngineBtn.textContent = "Stop Scrape Engine";
-    scrapeEngineBtn.classList.remove("btn-primary");
-    scrapeEngineBtn.classList.add("btn-secondary");
     return;
   }
 
   scrapeEngineBtn.textContent = "Start Scrape Engine";
-  scrapeEngineBtn.classList.remove("btn-secondary");
-  scrapeEngineBtn.classList.add("btn-primary");
 }
 
 function setCadenceButtonsEnabled() {
@@ -1745,11 +1740,6 @@ function runScheduler() {
 }
 
 filterSelect.addEventListener("change", renderJobs);
-
-tickBtn.addEventListener("click", () => {
-  updateCycle();
-  renderAll();
-});
 
 resetBtn.addEventListener("click", resetDashboard);
 scrapeEngineBtn.addEventListener("click", toggleScrapeEngine);

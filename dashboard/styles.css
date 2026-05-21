@@ -15,6 +15,11 @@
   box-sizing: border-box;
 }
 
+/* Keep the HTML hidden attribute authoritative for all UI state toggles. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
