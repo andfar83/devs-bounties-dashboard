@@ -1,5 +1,15 @@
 ﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+import { BOUNTY_STAGES, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
+import {
+  buildWorkPackageFiles,
+  toAgentEvent,
+  toBountyCandidate,
+  toScrapeRun,
+  toWorkArtifacts,
+  toWorkPackage
+} from "./contracts.js";
+
 const LIVE_TICK_MS = 2200;
 const FAST_POLL_MIN_MS = 5 * 60 * 1000;
 const FAST_POLL_MAX_MS = 15 * 60 * 1000;
@@ -140,6 +150,8 @@ let trackDirHandle = null;
 let selectedBountyId = null;
 const archivedBountyIds = new Set();
 const archiveInFlightIds = new Set();
+const trackedPackageIds = new Set();
+const packageInFlightIds = new Set();
 let solvedBounties = [];
 const agentWorkStartedAt = new Map();
 let scrapeSchedule = {
@@ -150,10 +162,11 @@ let scrapeSchedule = {
 };
 let supabaseClient = null;
 let authSubscription = null;
+let currentAuthUser = null;
 
-const HARDWIRED_SUPABASE_URL = "https://mwniqoxghjquriybjdjs.supabase.co";
-const HARDWIRED_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_nsSUN_oXLl9VfFWCBglN-w_Pp_vcBb5";
-const AUTH_EMAIL_REDIRECT_TO = "https://aa-dashboard-bounties.vercel.app";
+const HARDWIRED_SUPABASE_URL = SUPABASE_CONFIG.URL;
+const HARDWIRED_SUPABASE_PUBLISHABLE_KEY = SUPABASE_CONFIG.PUBLISHABLE_KEY;
+const AUTH_EMAIL_REDIRECT_TO = SUPABASE_CONFIG.AUTH_EMAIL_REDIRECT_TO;
 
 const appShell = document.getElementById("app-shell");
 const authGate = document.getElementById("auth-gate");
@@ -323,6 +336,7 @@ function renderUserProfile(user = null, emailFallback = "") {
 }
 
 function setAccessState(isAuthenticated, email = "", user = null) {
+  currentAuthUser = isAuthenticated ? user : null;
   appShell.hidden = !isAuthenticated;
   authGate.hidden = isAuthenticated;
   // Defensive visibility control: some CSS display rules can override [hidden].
@@ -336,6 +350,11 @@ function setAccessState(isAuthenticated, email = "", user = null) {
   }
   renderUserProfile(user, email);
   setAuthStatus(`Signed in as ${email || "user"}.`, "ok");
+}
+
+function applySignedInState(user, emailFallback = "") {
+  const resolvedEmail = user?.email || emailFallback || "";
+  setAccessState(true, resolvedEmail, user || null);
 }
 
 function getSignInValues() {
@@ -402,7 +421,7 @@ function ensureSupabaseClient() {
       setAccessState(false);
       return;
     }
-    setAccessState(true, email, session.user);
+    applySignedInState(session.user, email);
     void persistAuthUserProfile(session.user);
     void persistPendingSignupComment(session.user);
   });
@@ -543,8 +562,7 @@ async function bootstrapAuth() {
       return;
     }
 
-    const email = userData.user.email || "";
-    setAccessState(true, email, userData.user);
+    applySignedInState(userData.user);
     await persistAuthUserProfile(userData.user);
     await persistPendingSignupComment(userData.user);
   } catch (error) {
@@ -571,7 +589,7 @@ async function handleSignIn() {
     }
     await persistAuthUserProfile(data?.user);
     await persistPendingSignupComment(data?.user);
-    setAccessState(true, data?.user?.email || email, data?.user || null);
+    applySignedInState(data?.user || null, email);
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
       setResendVisible(true, email);
@@ -626,7 +644,7 @@ async function handleSignUp() {
       await persistAuthUserProfile(data.user);
       await persistAuthComment(data.user, cleanComment);
       removePendingSignupComment(email);
-      setAccessState(true, data.user?.email || email, data.user || null);
+      applySignedInState(data.user || null, email);
       if (signUpCommentInput) {
         signUpCommentInput.value = "";
       }
@@ -781,6 +799,131 @@ function setSolvedFolderStatus(id, folderStatus, note) {
   row.note = note || row.note;
 }
 
+function currentUserId() {
+  return currentAuthUser?.id || null;
+}
+
+async function persistTableRow(tableName, row, options = {}) {
+  if (!supabaseClient || !currentUserId()) {
+    return { skipped: true };
+  }
+
+  const query = supabaseClient.from(tableName).upsert(row, options);
+  const { error } = await query;
+  if (error) {
+    console.warn(`${tableName} persist failed:`, error.message);
+    return { error };
+  }
+  return { ok: true };
+}
+
+async function persistBountyCandidate(record) {
+  const row = toBountyCandidate(record, currentUserId());
+  return persistTableRow("bounty_candidates", row, { onConflict: "user_id,dedupe_key" });
+}
+
+async function persistWorkPackageRecords(record, folderPath = "") {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId) {
+    return;
+  }
+
+  await persistTableRow("work_packages", toWorkPackage(record, userId, folderPath), {
+    onConflict: "user_id,bounty_local_id"
+  });
+
+  const artifacts = toWorkArtifacts(record, userId);
+  const { error } = await supabaseClient.from("work_artifacts").upsert(artifacts, {
+    onConflict: "user_id,bounty_local_id,relative_path"
+  });
+  if (error) {
+    console.warn("work_artifacts persist failed:", error.message);
+  }
+}
+
+async function persistAgentEvent(event) {
+  if (!supabaseClient || !currentUserId()) {
+    return;
+  }
+  const { error } = await supabaseClient.from("agent_events").insert(toAgentEvent({ ...event, userId: currentUserId() }));
+  if (error) {
+    console.warn("agent_events insert failed:", error.message);
+  }
+}
+
+async function persistScrapeRun(mode, stats) {
+  if (!supabaseClient || !currentUserId()) {
+    return;
+  }
+  const { error } = await supabaseClient.from("scrape_runs").insert(
+    toScrapeRun({
+      mode,
+      status: stats.status,
+      userId: currentUserId(),
+      stats,
+      message: stats.error_message || ""
+    })
+  );
+  if (error) {
+    console.warn("scrape_runs insert failed:", error.message);
+  }
+}
+
+async function getDirectoryByPath(rootHandle, pathParts) {
+  let currentHandle = rootHandle;
+  for (const part of pathParts) {
+    currentHandle = await currentHandle.getDirectoryHandle(part, { create: true });
+  }
+  return currentHandle;
+}
+
+async function writeTextFile(rootHandle, relativePath, content) {
+  const parts = relativePath.split("/").filter(Boolean);
+  const fileName = parts.pop();
+  const directoryHandle = await getDirectoryByPath(rootHandle, parts);
+  const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}
+
+async function writeWorkPackage(record, reason = "Pipeline package prepared") {
+  if (!record || !trackDirHandle || trackedPackageIds.has(record.id) || packageInFlightIds.has(record.id)) {
+    return false;
+  }
+
+  packageInFlightIds.add(record.id);
+  try {
+    const folderName = `bounty-${record.id}`;
+    const folderHandle = await trackDirHandle.getDirectoryHandle(folderName, { create: true });
+    const files = buildWorkPackageFiles(record);
+    for (const file of files) {
+      await writeTextFile(folderHandle, file.path, file.content);
+    }
+    trackedPackageIds.add(record.id);
+    await persistWorkPackageRecords(record, folderName);
+    trackStatus.textContent = `${reason}: ${folderName}`;
+    return true;
+  } catch (error) {
+    console.warn("work package write failed:", error.message);
+    trackStatus.textContent = `Could not write package for ${record.id}.`;
+    return false;
+  } finally {
+    packageInFlightIds.delete(record.id);
+  }
+}
+
+function trackPipelinePackage(record, reason = "Prepared bounty package") {
+  if (!record) {
+    return;
+  }
+  void persistBountyCandidate(record);
+  if (!trackDirHandle) {
+    return;
+  }
+  void writeWorkPackage(record, reason);
+}
+
 function renderSolvedBounties() {
   if (!solvedBounties.length) {
     solvedBody.innerHTML = "";
@@ -854,6 +997,20 @@ function seedScrapeSchedule(baseTime = Date.now()) {
   scheduleNextFast(baseTime);
   scheduleNextDeep(baseTime);
   scheduleNextFull(baseTime);
+}
+
+const scheduleNextByMode = {
+  [SCRAPE_MODES.FAST]: scheduleNextFast,
+  [SCRAPE_MODES.DEEP]: scheduleNextDeep,
+  [SCRAPE_MODES.FULL]: scheduleNextFull
+};
+
+function scheduleNextForMode(mode, baseTime = Date.now()) {
+  const scheduler = scheduleNextByMode[mode];
+  if (!scheduler) {
+    return;
+  }
+  scheduler(baseTime);
 }
 
 function isAnyScrapeDue(now) {
@@ -1445,8 +1602,20 @@ function createRandomBounty() {
     scope: SCOPE_BY_TYPE[type],
     fixRequired: FIX_BY_TYPE[type],
     price,
-    stage: "discovered",
-    dueDate
+    stage: BOUNTY_STAGES.DISCOVERED,
+    dueDate,
+    retrievedAt: new Date().toISOString(),
+    confidence: Number((0.62 + Math.random() * 0.25).toFixed(2)),
+    nextAction: "evaluate_now",
+    scores: {
+      fit: randInt(14, 24),
+      payoutQuality: randInt(10, 19),
+      deadlineFeasibility: randInt(8, 15),
+      winProbability: randInt(8, 18),
+      strategicValue: randInt(4, 9),
+      platformTrust: randInt(6, 10)
+    },
+    redFlags: []
   };
 }
 
@@ -1459,7 +1628,20 @@ function promoteRandomRecord(fromStage, toStage, chance) {
     return null;
   }
   const target = candidates[Math.floor(Math.random() * candidates.length)];
+  const previousStage = target.stage;
   target.stage = toStage;
+  void persistBountyCandidate(target);
+  void persistAgentEvent({
+    record: target,
+    agentId: toStage === BOUNTY_STAGES.SHORTLISTED ? "scout" : "feasibility",
+    action: "stage_promoted",
+    fromStage: previousStage,
+    toStage,
+    reason: "Simulation pipeline promotion"
+  });
+  if (stageRank[toStage] >= stageRank.shortlisted) {
+    trackPipelinePackage(target, "Prepared pipeline bounty package");
+  }
   return target;
 }
 
@@ -1513,28 +1695,11 @@ async function archiveSolvedBounty(record) {
   setSolvedFolderStatus(record.id, "pending", "Writing project copy");
 
   try {
-    const folderHandle = await trackDirHandle.getDirectoryHandle(`bounty-${record.id}`, { create: true });
-    const disclosureHandle = await folderHandle.getFileHandle("disclosure.md", { create: true });
-    const disclosureWritable = await disclosureHandle.createWritable();
-    await disclosureWritable.write(projectCopyText(record));
-    await disclosureWritable.close();
-
-    const checklistHandle = await folderHandle.getFileHandle("submission-checklist.md", { create: true });
-    const checklistWritable = await checklistHandle.createWritable();
-    await checklistWritable.write(
-      `# Submission Checklist - ${record.id}
-
-- [ ] Confirm platform eligibility and deadline
-- [ ] Validate fix with reproducible test steps
-- [ ] Attach patch diff and implementation notes
-- [ ] Attach benchmark/proof screenshots
-- [ ] Prepare final submission text
-- [ ] Submit on ${record.site}
-`
-    );
-    await checklistWritable.close();
-    setSolvedFolderStatus(record.id, "tracked", "Project copy and checklist created");
-    trackStatus.textContent = `Tracked solved bounty ${record.id} in connected folder.`;
+    const wrotePackage = await writeWorkPackage(record, "Tracked solved bounty");
+    if (!wrotePackage && !trackedPackageIds.has(record.id)) {
+      throw new Error("Package write failed");
+    }
+    setSolvedFolderStatus(record.id, "tracked", "Project package created");
   } catch (error) {
     archivedBountyIds.delete(record.id);
     setSolvedFolderStatus(record.id, "failed", "Folder write failed");
@@ -1552,6 +1717,9 @@ async function connectTrackFolder() {
     }
     trackDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
     trackStatus.textContent = "Tracking folder connected.";
+    for (const record of bountyRecords.filter((item) => stageRank[item.stage] >= stageRank.shortlisted)) {
+      await writeWorkPackage(record, "Prepared active bounty package");
+    }
     for (const row of solvedBounties.filter((item) => item.folderStatus !== "tracked")) {
       await archiveSolvedBounty(row.snapshot);
     }
@@ -1579,9 +1747,9 @@ function runScrapeMode(mode) {
   const ops = agents.find((a) => a.id === "ops");
 
   const modeConfig = {
-    fast: { label: "Fast Poll", minFound: 1, maxFound: 2, shortlistChance: 0.35 },
-    deep: { label: "Deep Scan", minFound: 1, maxFound: 4, shortlistChance: 0.55 },
-    full: { label: "Full Refresh", minFound: 2, maxFound: 7, shortlistChance: 0.75 }
+    [SCRAPE_MODES.FAST]: { label: "Fast Poll", minFound: 1, maxFound: 2, shortlistChance: 0.35 },
+    [SCRAPE_MODES.DEEP]: { label: "Deep Scan", minFound: 1, maxFound: 4, shortlistChance: 0.55 },
+    [SCRAPE_MODES.FULL]: { label: "Full Refresh", minFound: 2, maxFound: 7, shortlistChance: 0.75 }
   }[mode];
 
   if (!modeConfig) {
@@ -1603,7 +1771,9 @@ function runScrapeMode(mode) {
   }
 
   for (let i = 0; i < foundCount; i += 1) {
-    bountyRecords.push(createRandomBounty());
+    const created = createRandomBounty();
+    bountyRecords.push(created);
+    void persistBountyCandidate(created);
   }
   pruneBountyRecords();
 
@@ -1628,6 +1798,15 @@ function runScrapeMode(mode) {
   }
 
   scrapeSchedule.lastRunMode = `${modeConfig.label}: +${foundCount}`;
+  void persistScrapeRun(mode, {
+    status: "done",
+    started_at: new Date(Date.now() - 1000).toISOString(),
+    completed_at: new Date().toISOString(),
+    source_count: foundCount,
+    created_count: foundCount,
+    updated_count: 0,
+    rejected_count: 0
+  });
 }
 
 function triggerFallbackDownload(bytes, filename) {
@@ -1694,17 +1873,18 @@ function processScheduledScrapes(now) {
     return;
   }
 
-  if (scrapeSchedule.nextFastAt && now >= scrapeSchedule.nextFastAt) {
-    runScrapeMode("fast");
-    scheduleNextFast(now);
-  }
-  if (scrapeSchedule.nextDeepAt && now >= scrapeSchedule.nextDeepAt) {
-    runScrapeMode("deep");
-    scheduleNextDeep(now);
-  }
-  if (scrapeSchedule.nextFullAt && now >= scrapeSchedule.nextFullAt) {
-    runScrapeMode("full");
-    scheduleNextFull(now);
+  const dueChecks = [
+    { mode: "fast", dueAt: scrapeSchedule.nextFastAt },
+    { mode: "deep", dueAt: scrapeSchedule.nextDeepAt },
+    { mode: "full", dueAt: scrapeSchedule.nextFullAt }
+  ];
+
+  for (const check of dueChecks) {
+    if (!check.dueAt || now < check.dueAt) {
+      continue;
+    }
+    runScrapeMode(check.mode);
+    scheduleNextForMode(check.mode, now);
   }
 }
 
@@ -1861,13 +2041,7 @@ function runCadenceClick(mode) {
   }
 
   runScrapeMode(mode);
-  if (mode === "fast") {
-    scheduleNextFast(Date.now());
-  } else if (mode === "deep") {
-    scheduleNextDeep(Date.now());
-  } else if (mode === "full") {
-    scheduleNextFull(Date.now());
-  }
+  scheduleNextForMode(mode, Date.now());
   setCadenceButtonsEnabled();
   renderAll();
 }
@@ -1903,6 +2077,13 @@ function pulseModeButton(btn) {
   }, 500);
 }
 
+function clearScoutWorkState() {
+  scrapeEngineButtonFocused = false;
+  scoutWorkingUntil = 0;
+  lastScrapeModeKey = null;
+  setModeButtonActive(null);
+}
+
 function toggleScrapeEngine() {
   if (!simRunning) {
     scrapeSchedule.lastRunMode = "Engine blocked (start live sim first)";
@@ -1916,13 +2097,10 @@ function toggleScrapeEngine() {
     seedScrapeSchedule(Date.now());
     scrapeSchedule.lastRunMode = "Scheduled";
     runScrapeMode("fast");
-    scheduleNextFast(Date.now());
+    scheduleNextForMode("fast", Date.now());
   } else {
     scrapeSchedule.lastRunMode = "Stopped";
-    scrapeEngineButtonFocused = false;
-    scoutWorkingUntil = 0;
-    lastScrapeModeKey = null;
-    setModeButtonActive(null);
+    clearScoutWorkState();
   }
   setScrapeButtonState();
   setCadenceButtonsEnabled();
@@ -1932,9 +2110,7 @@ function toggleScrapeEngine() {
 function resetDashboard() {
   simRunning = false;
   scrapeEngineRunning = false;
-  scrapeEngineButtonFocused = false;
-  scoutWorkingUntil = 0;
-  lastScrapeModeKey = null;
+  clearScoutWorkState();
   stopSimulation();
   lastCycleAt = null;
   clearStateForSimulation();
@@ -2002,16 +2178,13 @@ simBtn.addEventListener("click", () => {
     renderAll();
   } else {
     scrapeEngineRunning = false;
-    scrapeEngineButtonFocused = false;
-    scoutWorkingUntil = 0;
-    lastScrapeModeKey = null;
+    clearScoutWorkState();
     stopSimulation();
     lastCycleAt = null;
     for (const agent of agents) {
       agent.mood = "Standby";
     }
     setScrapeButtonState();
-    setModeButtonActive(null);
     renderAll();
   }
   setSimButtonState();

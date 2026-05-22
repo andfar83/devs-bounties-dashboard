@@ -59,6 +59,17 @@ The dashboard uses four synchronized views:
   - `Working` (green),
   - `Standby` (amber).
 
+## Work Package Storage
+
+- `Connect Track Folder` now prepares a full local package for every bounty that reaches `shortlisted` or later.
+- Packages are written as `bounty-<id>/` with:
+  - `challenge/source.json`, `rules.md`, `retrieved-page.html`,
+  - `feasibility/feasibility_report.md`, `effort_estimate.json`, `risk_register.json`,
+  - `solution/README.md`, `REPRO.md`, `RESULTS.md`, `patch.diff`,
+  - `ops/submission-checklist.md`, `submission_log.md`, `post_submit_plan.md`.
+- The dashboard also defines Supabase contracts for candidates, scrape runs, agent events, work packages, artifacts, and submission logs.
+- Run [`supabase-bounty-workflow.sql`](./supabase-bounty-workflow.sql) once to create the workflow tables, RLS policies, and private `bounty-artifacts` Storage bucket.
+
 ## Local Run
 
 Open `dashboard/index.html` in a browser, or serve the folder with a static server.
