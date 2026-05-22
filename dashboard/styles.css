@@ -239,9 +239,9 @@ h1 {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: linear-gradient(90deg, #fbcd00, #00c2a8);
-  color: #00121f;
-  font-weight: 700;
+  background: linear-gradient(90deg, #39fb00, #00c2a8);
+  color: #00121fde;
+  font-weight: 600;
   box-shadow: 0 10px 24px rgba(0, 194, 168, 0.12);
 }
 

@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/assets/(.*)",
+      "destination": "/dashboard/assets/$1"
+    },
+    {
+      "source": "/reports/(.*)",
+      "destination": "/dashboard/reports/$1"
+    },
+    {
+      "source": "/app.js",
+      "destination": "/dashboard/app.js"
+    },
+    {
+      "source": "/styles.css",
+      "destination": "/dashboard/styles.css"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/dashboard/index.html"
+    }
+  ]
+}
