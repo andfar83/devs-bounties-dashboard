@@ -153,7 +153,7 @@ let authSubscription = null;
 
 const HARDWIRED_SUPABASE_URL = "https://mwniqoxghjquriybjdjs.supabase.co";
 const HARDWIRED_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_nsSUN_oXLl9VfFWCBglN-w_Pp_vcBb5";
-const AUTH_EMAIL_REDIRECT_TO = window.location.origin;
+const AUTH_EMAIL_REDIRECT_TO = "https://aa-dashboard-bounties.vercel.app";
 
 const appShell = document.getElementById("app-shell");
 const authGate = document.getElementById("auth-gate");
