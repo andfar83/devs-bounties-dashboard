@@ -171,6 +171,11 @@ const authSignUpBtn = document.getElementById("auth-signup-btn");
 const authResendBtn = document.getElementById("auth-resend-btn");
 const authStatus = document.getElementById("auth-status");
 const signOutBtn = document.getElementById("signout-btn");
+const userProfile = document.getElementById("user-profile");
+const userAvatarImage = document.getElementById("user-avatar-image");
+const userAvatarFallback = document.getElementById("user-avatar-fallback");
+const userDisplayName = document.getElementById("user-display-name");
+const userDisplayEmail = document.getElementById("user-display-email");
 let pendingVerificationEmail = "";
 const PENDING_SIGNUP_COMMENT_KEY = "bounty_ops_pending_signup_comments";
 
@@ -218,7 +223,106 @@ function setAuthLoading(isLoading) {
   }
 }
 
-function setAccessState(isAuthenticated, email = "") {
+function prettifyHandle(handle) {
+  const normalized = (handle || "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized
+    .split(" ")
+    .map((part) => (part ? part.slice(0, 1).toUpperCase() + part.slice(1) : ""))
+    .join(" ");
+}
+
+function resolveDisplayName(user, emailFallback = "") {
+  const meta = user?.user_metadata || {};
+  const candidates = [meta.full_name, meta.name, meta.preferred_username, meta.user_name, meta.nickname];
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (value) {
+      return value;
+    }
+  }
+
+  const email = (user?.email || emailFallback || "").trim().toLowerCase();
+  if (email.includes("@")) {
+    const handle = email.split("@")[0];
+    const pretty = prettifyHandle(handle);
+    if (pretty) {
+      return pretty;
+    }
+  }
+  return "User";
+}
+
+function resolveAvatarUrl(user) {
+  const meta = user?.user_metadata || {};
+  const candidates = [meta.avatar_url, meta.picture, meta.profile_image, meta.photo_url];
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function getAvatarInitial(name, email = "") {
+  const fromName = (name || "").trim();
+  if (fromName) {
+    const token = fromName.split(/\s+/)[0] || "";
+    const first = token.slice(0, 1);
+    if (first) {
+      return first.toUpperCase();
+    }
+  }
+
+  const fromEmail = (email || "").trim();
+  const first = fromEmail.slice(0, 1);
+  return first ? first.toUpperCase() : "U";
+}
+
+function renderUserProfile(user = null, emailFallback = "") {
+  if (!userProfile || !userAvatarImage || !userAvatarFallback || !userDisplayName || !userDisplayEmail) {
+    return;
+  }
+
+  const email = (user?.email || emailFallback || "").trim().toLowerCase();
+  if (!user && !email) {
+    userProfile.hidden = true;
+    userDisplayName.textContent = "User";
+    userDisplayEmail.textContent = "--";
+    userAvatarFallback.textContent = "U";
+    userAvatarFallback.hidden = false;
+    userAvatarImage.hidden = true;
+    userAvatarImage.removeAttribute("src");
+    return;
+  }
+
+  const name = resolveDisplayName(user, email);
+  const avatarUrl = resolveAvatarUrl(user);
+  const avatarInitial = getAvatarInitial(name, email);
+
+  userProfile.hidden = false;
+  userDisplayName.textContent = name;
+  userDisplayEmail.textContent = email || "No email";
+  userAvatarFallback.textContent = avatarInitial;
+
+  if (avatarUrl) {
+    userAvatarImage.src = avatarUrl;
+    userAvatarImage.hidden = false;
+    userAvatarFallback.hidden = true;
+  } else {
+    userAvatarImage.hidden = true;
+    userAvatarImage.removeAttribute("src");
+    userAvatarFallback.hidden = false;
+  }
+}
+
+function setAccessState(isAuthenticated, email = "", user = null) {
   appShell.hidden = !isAuthenticated;
   authGate.hidden = isAuthenticated;
   // Defensive visibility control: some CSS display rules can override [hidden].
@@ -226,9 +330,11 @@ function setAccessState(isAuthenticated, email = "") {
   appShell.style.display = isAuthenticated ? "" : "none";
   authGate.style.display = isAuthenticated ? "none" : "";
   if (!isAuthenticated) {
+    renderUserProfile(null);
     setAuthStatus("Not signed in.");
     return;
   }
+  renderUserProfile(user, email);
   setAuthStatus(`Signed in as ${email || "user"}.`, "ok");
 }
 
@@ -296,7 +402,7 @@ function ensureSupabaseClient() {
       setAccessState(false);
       return;
     }
-    setAccessState(true, email);
+    setAccessState(true, email, session.user);
     void persistAuthUserProfile(session.user);
     void persistPendingSignupComment(session.user);
   });
@@ -438,7 +544,7 @@ async function bootstrapAuth() {
     }
 
     const email = userData.user.email || "";
-    setAccessState(true, email);
+    setAccessState(true, email, userData.user);
     await persistAuthUserProfile(userData.user);
     await persistPendingSignupComment(userData.user);
   } catch (error) {
@@ -465,7 +571,7 @@ async function handleSignIn() {
     }
     await persistAuthUserProfile(data?.user);
     await persistPendingSignupComment(data?.user);
-    setAccessState(true, data?.user?.email || email);
+    setAccessState(true, data?.user?.email || email, data?.user || null);
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
       setResendVisible(true, email);
@@ -520,7 +626,7 @@ async function handleSignUp() {
       await persistAuthUserProfile(data.user);
       await persistAuthComment(data.user, cleanComment);
       removePendingSignupComment(email);
-      setAccessState(true, data.user?.email || email);
+      setAccessState(true, data.user?.email || email, data.user || null);
       if (signUpCommentInput) {
         signUpCommentInput.value = "";
       }
@@ -1974,6 +2080,13 @@ if (signInPasswordInput) {
     }
     event.preventDefault();
     await handleSignIn();
+  });
+}
+if (userAvatarImage && userAvatarFallback) {
+  userAvatarImage.addEventListener("error", () => {
+    userAvatarImage.hidden = true;
+    userAvatarImage.removeAttribute("src");
+    userAvatarFallback.hidden = false;
   });
 }
 
