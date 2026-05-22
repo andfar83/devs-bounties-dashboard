@@ -236,8 +236,52 @@ h1 {
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, #00a6fb, #00c2a8);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: linear-gradient(90deg, #fbcd00, #00c2a8);
   color: #00121f;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(0, 194, 168, 0.12);
+}
+
+.btn-primary::before {
+  content: "";
+  position: absolute;
+  inset: -45% auto -45% -55%;
+  width: 42%;
+  transform: skewX(-22deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  opacity: 0;
+  z-index: -1;
+}
+
+.btn-primary:not(:disabled):hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: rgba(223, 246, 255, 0.95);
+  background: linear-gradient(90deg, #29c4ff, #35f0d3);
+  box-shadow:
+    0 0 0 1px rgba(223, 246, 255, 0.35),
+    0 0 24px rgba(0, 194, 168, 0.42),
+    0 14px 34px rgba(0, 166, 251, 0.24);
+}
+
+.btn-primary:not(:disabled):hover::before {
+  animation: primaryButtonSweep 620ms ease forwards;
+  opacity: 1;
+}
+
+.btn-primary:not(:disabled):active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+@keyframes primaryButtonSweep {
+  from {
+    left: -55%;
+  }
+  to {
+    left: 120%;
+  }
 }
 
 .btn-secondary {
