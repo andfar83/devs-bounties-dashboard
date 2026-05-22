@@ -182,7 +182,7 @@ body {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 1000;
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -322,6 +322,8 @@ h1 {
 
 .panel-agents {
   grid-column: span 12;
+  position: relative;
+  z-index: 10;
 }
 
 .agent-grid {
@@ -338,6 +340,13 @@ h1 {
   padding: 0.8rem;
   background: rgba(8, 17, 26, 0.7);
   overflow: visible;
+  z-index: 1;
+}
+
+.agent-card:hover,
+.agent-card:focus-within,
+.agent-card:focus {
+  z-index: 200;
 }
 
 .agent-head {
@@ -502,7 +511,7 @@ h1 {
   transform: translateY(10px);
   transition: opacity 220ms ease, transform 220ms ease;
   pointer-events: none;
-  z-index: 5;
+  z-index: 300;
   padding: 0.8rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);

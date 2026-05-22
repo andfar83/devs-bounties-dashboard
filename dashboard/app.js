@@ -172,6 +172,7 @@ const authResendBtn = document.getElementById("auth-resend-btn");
 const authStatus = document.getElementById("auth-status");
 const signOutBtn = document.getElementById("signout-btn");
 let pendingVerificationEmail = "";
+const PENDING_SIGNUP_COMMENT_KEY = "bounty_ops_pending_signup_comments";
 
 const agentGrid = document.getElementById("agent-grid");
 const jobsBody = document.getElementById("jobs-body");
@@ -297,9 +298,46 @@ function ensureSupabaseClient() {
     }
     setAccessState(true, email);
     void persistAuthUserProfile(session.user);
+    void persistPendingSignupComment(session.user);
   });
   authSubscription = data.subscription;
   return supabaseClient;
+}
+
+function getPendingSignupComments() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_SIGNUP_COMMENT_KEY) || "{}");
+  } catch (error) {
+    console.warn("pending signup comment read failed:", error.message);
+    return {};
+  }
+}
+
+function savePendingSignupComment(email, comment) {
+  const cleanEmail = (email || "").trim().toLowerCase();
+  const cleanComment = (comment || "").trim().slice(0, 600);
+  if (!cleanEmail || !cleanComment) {
+    return;
+  }
+
+  const pendingComments = getPendingSignupComments();
+  pendingComments[cleanEmail] = cleanComment;
+  localStorage.setItem(PENDING_SIGNUP_COMMENT_KEY, JSON.stringify(pendingComments));
+}
+
+function removePendingSignupComment(email) {
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) {
+    return;
+  }
+
+  const pendingComments = getPendingSignupComments();
+  if (!Object.prototype.hasOwnProperty.call(pendingComments, cleanEmail)) {
+    return;
+  }
+
+  delete pendingComments[cleanEmail];
+  localStorage.setItem(PENDING_SIGNUP_COMMENT_KEY, JSON.stringify(pendingComments));
 }
 
 async function persistAuthUserProfile(user) {
@@ -338,13 +376,43 @@ async function persistAuthComment(user, comment) {
     console.warn("user_comments insert failed:", commentError.message);
   }
 
-  const { error: profileError } = await supabaseClient
-    .from("user_profiles")
-    .update({ latest_comment: cleanComment, last_login_at: new Date().toISOString() })
-    .eq("id", user.id);
+  const { error: profileError } = await supabaseClient.from("user_profiles").upsert(
+    {
+      id: user.id,
+      email: user.email || null,
+      latest_comment: cleanComment,
+      last_login_at: new Date().toISOString()
+    },
+    { onConflict: "id" }
+  );
   if (profileError) {
     console.warn("user_profiles latest_comment update failed:", profileError.message);
   }
+}
+
+async function persistPendingSignupComment(user) {
+  const email = (user?.email || "").trim().toLowerCase();
+  if (!email) {
+    return;
+  }
+
+  const pendingComment = getPendingSignupComments()[email];
+  if (!pendingComment) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("user_profiles")
+    .select("latest_comment")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!error && data?.latest_comment === pendingComment) {
+    removePendingSignupComment(email);
+    return;
+  }
+
+  await persistAuthComment(user, pendingComment);
+  removePendingSignupComment(email);
 }
 
 async function bootstrapAuth() {
@@ -358,6 +426,7 @@ async function bootstrapAuth() {
     setAccessState(Boolean(data?.session), email);
     if (data?.session?.user) {
       await persistAuthUserProfile(data.session.user);
+      await persistPendingSignupComment(data.session.user);
     }
     if (!data?.session) {
       setAuthStatus("Session not found. Sign in to continue.");
@@ -385,6 +454,7 @@ async function handleSignIn() {
       throw error;
     }
     await persistAuthUserProfile(data?.user);
+    await persistPendingSignupComment(data?.user);
     setAccessState(true, data?.user?.email || email);
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
@@ -421,19 +491,25 @@ async function handleSignUp() {
     setAuthLoading(true);
     setResendVisible(false);
     const client = ensureSupabaseClient();
+    const cleanComment = comment.trim().slice(0, 600);
     const { data, error } = await client.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: AUTH_EMAIL_REDIRECT_TO
+        emailRedirectTo: AUTH_EMAIL_REDIRECT_TO,
+        data: {
+          initial_comment: cleanComment
+        }
       }
     });
     if (error) {
       throw error;
     }
+    savePendingSignupComment(email, cleanComment);
     if (data.session) {
       await persistAuthUserProfile(data.user);
-      await persistAuthComment(data.user, comment);
+      await persistAuthComment(data.user, cleanComment);
+      removePendingSignupComment(email);
       setAccessState(true, data.user?.email || email);
       if (signUpCommentInput) {
         signUpCommentInput.value = "";
