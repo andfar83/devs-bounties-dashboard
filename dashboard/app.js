@@ -422,15 +422,25 @@ async function bootstrapAuth() {
     if (error) {
       throw error;
     }
-    const email = data?.session?.user?.email || "";
-    setAccessState(Boolean(data?.session), email);
-    if (data?.session?.user) {
-      await persistAuthUserProfile(data.session.user);
-      await persistPendingSignupComment(data.session.user);
-    }
+
     if (!data?.session) {
+      setAccessState(false);
       setAuthStatus("Session not found. Sign in to continue.");
+      return;
     }
+
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !userData?.user) {
+      await supabaseClient.auth.signOut({ scope: "local" });
+      setAccessState(false);
+      setAuthStatus("Session expired or account was reset. Sign in to continue.", "error");
+      return;
+    }
+
+    const email = userData.user.email || "";
+    setAccessState(true, email);
+    await persistAuthUserProfile(userData.user);
+    await persistPendingSignupComment(userData.user);
   } catch (error) {
     supabaseClient = null;
     setAccessState(false);
