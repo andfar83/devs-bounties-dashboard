@@ -153,6 +153,70 @@
           </div>
         </section>
 
+        <section class="panel panel-control">
+          <div class="panel-title-row">
+            <h2>Control Tower</h2>
+            <span id="control-mode-meta" class="meta">Mode: simulation</span>
+          </div>
+          <div class="control-grid">
+            <div class="control-block">
+              <p class="control-label">Engine Mode</p>
+              <div id="mode-switch" class="segmented-control" role="group" aria-label="Engine mode">
+                <button class="segment is-active" data-mode="simulation" type="button">Simulation</button>
+                <button class="segment" data-mode="shadow_real" type="button">Shadow Real</button>
+                <button class="segment" data-mode="live_real" type="button">Live Real</button>
+              </div>
+            </div>
+            <div class="control-block">
+              <p class="control-label">Health</p>
+              <div id="health-grid" class="health-grid"></div>
+            </div>
+            <div class="control-block control-actions">
+              <button id="kill-switch-btn" class="btn btn-danger" type="button">Kill Switch</button>
+              <span id="safety-status" class="meta">Engine safety ready.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-review">
+          <div class="panel-title-row">
+            <h2>Candidate Review Queue</h2>
+            <span id="review-meta" class="meta">No pending candidates.</span>
+          </div>
+          <div id="review-queue" class="review-queue"></div>
+        </section>
+
+        <section class="panel panel-packages">
+          <div class="panel-title-row">
+            <h2>Work Package Center</h2>
+            <span id="package-meta" class="meta">No packages yet.</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Stage</th>
+                  <th>Folder</th>
+                  <th>Supabase</th>
+                  <th>Artifacts</th>
+                  <th>Last Event</th>
+                  <th>Next Action</th>
+                </tr>
+              </thead>
+              <tbody id="package-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel panel-audit">
+          <div class="panel-title-row">
+            <h2>Audit Trail</h2>
+            <span id="audit-meta" class="meta">No events yet.</span>
+          </div>
+          <div id="audit-list" class="audit-list"></div>
+        </section>
+
         <section class="panel">
           <div class="panel-title-row">
             <h2>Funding Funnel</h2>

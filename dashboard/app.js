@@ -1,6 +1,6 @@
 ﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { BOUNTY_STAGES, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
+import { APP_MODE, BOUNTY_STAGES, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
 import {
   buildWorkPackageFiles,
   toAgentEvent,
@@ -154,6 +154,10 @@ const trackedPackageIds = new Set();
 const packageInFlightIds = new Set();
 let solvedBounties = [];
 const agentWorkStartedAt = new Map();
+let appRunMode = APP_MODE.SIMULATION;
+let auditEvents = [];
+let scrapeRunHistory = [];
+let lastEngineError = "";
 let scrapeSchedule = {
   nextFastAt: null,
   nextDeepAt: null,
@@ -216,6 +220,17 @@ const trackStatus = document.getElementById("track-status");
 const bountyDisclosure = document.getElementById("bounty-disclosure");
 const solvedBody = document.getElementById("solved-body");
 const solvedMeta = document.getElementById("solved-meta");
+const controlModeMeta = document.getElementById("control-mode-meta");
+const modeSwitch = document.getElementById("mode-switch");
+const healthGrid = document.getElementById("health-grid");
+const killSwitchBtn = document.getElementById("kill-switch-btn");
+const safetyStatus = document.getElementById("safety-status");
+const reviewMeta = document.getElementById("review-meta");
+const reviewQueue = document.getElementById("review-queue");
+const packageMeta = document.getElementById("package-meta");
+const packageBody = document.getElementById("package-body");
+const auditMeta = document.getElementById("audit-meta");
+const auditList = document.getElementById("audit-list");
 
 function setAuthStatus(message, kind = "") {
   authStatus.textContent = message;
@@ -721,6 +736,16 @@ function fmtMoney(num) {
   return `$${num.toLocaleString("en-US")}`;
 }
 
+function normalizeModeLabel(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function statusText(value) {
+  return String(value || "--").replace(/_/g, " ");
+}
+
 function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 }
@@ -803,6 +828,23 @@ function currentUserId() {
   return currentAuthUser?.id || null;
 }
 
+function recordAuditEvent({ record = null, agentId = "system", action, fromStage = null, toStage = null, reason = "" }) {
+  const event = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    bountyLocalId: record?.id || null,
+    title: record?.title || "",
+    agentId,
+    action,
+    fromStage,
+    toStage,
+    reason,
+    createdAt: new Date()
+  };
+  auditEvents.unshift(event);
+  auditEvents = auditEvents.slice(0, 80);
+  return event;
+}
+
 async function persistTableRow(tableName, row, options = {}) {
   if (!supabaseClient || !currentUserId()) {
     return { skipped: true };
@@ -818,8 +860,12 @@ async function persistTableRow(tableName, row, options = {}) {
 }
 
 async function persistBountyCandidate(record) {
+  record.appRunMode = appRunMode;
+  record.supabaseSyncStatus = "pending";
   const row = toBountyCandidate(record, currentUserId());
-  return persistTableRow("bounty_candidates", row, { onConflict: "user_id,dedupe_key" });
+  const result = await persistTableRow("bounty_candidates", row, { onConflict: "user_id,dedupe_key" });
+  record.supabaseSyncStatus = result.ok ? "synced" : result.skipped ? "local_only" : "failed";
+  return result;
 }
 
 async function persistWorkPackageRecords(record, folderPath = "") {
@@ -842,6 +888,7 @@ async function persistWorkPackageRecords(record, folderPath = "") {
 }
 
 async function persistAgentEvent(event) {
+  recordAuditEvent(event);
   if (!supabaseClient || !currentUserId()) {
     return;
   }
@@ -852,6 +899,8 @@ async function persistAgentEvent(event) {
 }
 
 async function persistScrapeRun(mode, stats) {
+  scrapeRunHistory.unshift({ mode, app_mode: appRunMode, ...stats, createdAt: new Date() });
+  scrapeRunHistory = scrapeRunHistory.slice(0, 20);
   if (!supabaseClient || !currentUserId()) {
     return;
   }
@@ -860,7 +909,7 @@ async function persistScrapeRun(mode, stats) {
       mode,
       status: stats.status,
       userId: currentUserId(),
-      stats,
+      stats: { ...stats, app_mode: appRunMode },
       message: stats.error_message || ""
     })
   );
@@ -901,11 +950,13 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
       await writeTextFile(folderHandle, file.path, file.content);
     }
     trackedPackageIds.add(record.id);
+    record.packageStatus = "tracked";
     await persistWorkPackageRecords(record, folderName);
     trackStatus.textContent = `${reason}: ${folderName}`;
     return true;
   } catch (error) {
     console.warn("work package write failed:", error.message);
+    record.packageStatus = "failed";
     trackStatus.textContent = `Could not write package for ${record.id}.`;
     return false;
   } finally {
@@ -919,6 +970,7 @@ function trackPipelinePackage(record, reason = "Prepared bounty package") {
   }
   void persistBountyCandidate(record);
   if (!trackDirHandle) {
+    record.packageStatus = record.packageStatus || "folder_needed";
     return;
   }
   void writeWorkPackage(record, reason);
@@ -1103,7 +1155,12 @@ function clearStateForSimulation() {
   agentWorkStartedAt.clear();
   archivedBountyIds.clear();
   archiveInFlightIds.clear();
+  trackedPackageIds.clear();
+  packageInFlightIds.clear();
   solvedBounties = [];
+  auditEvents = [];
+  scrapeRunHistory = [];
+  lastEngineError = "";
   scrapeSchedule = { nextFastAt: null, nextDeepAt: null, nextFullAt: null, lastRunMode: "none" };
   renderBountyDisclosure(null);
   renderEmptyReport();
@@ -1397,6 +1454,176 @@ function renderFunnel() {
     .join("");
 }
 
+function renderControlTower() {
+  if (controlModeMeta) {
+    controlModeMeta.textContent = `Mode: ${statusText(appRunMode)}`;
+  }
+
+  if (modeSwitch) {
+    for (const btn of modeSwitch.querySelectorAll("[data-mode]")) {
+      btn.classList.toggle("is-active", btn.dataset.mode === appRunMode);
+    }
+  }
+
+  const lastRun = scrapeRunHistory[0] || null;
+  const pendingReview = bountyRecords.filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && record.nextAction !== "discard").length;
+  const packageCount = bountyRecords.filter(hasWorkPackageSignal).length;
+  const trackedCount = bountyRecords.filter((record) => trackedPackageIds.has(record.id)).length;
+  const syncFailed = bountyRecords.filter((record) => record.supabaseSyncStatus === "failed").length;
+
+  if (healthGrid) {
+    healthGrid.innerHTML = `
+      <div class="health-tile"><span>Last run</span><strong>${lastRun ? normalizeModeLabel(lastRun.mode) : "--"}</strong></div>
+      <div class="health-tile"><span>Created</span><strong>${lastRun?.created_count ?? 0}</strong></div>
+      <div class="health-tile"><span>Updated</span><strong>${lastRun?.updated_count ?? 0}</strong></div>
+      <div class="health-tile"><span>Rejected</span><strong>${lastRun?.rejected_count ?? 0}</strong></div>
+      <div class="health-tile"><span>Review</span><strong>${pendingReview}</strong></div>
+      <div class="health-tile"><span>Packages</span><strong>${trackedCount}/${packageCount}</strong></div>
+      <div class="health-tile"><span>Sync errors</span><strong>${syncFailed}</strong></div>
+      <div class="health-tile"><span>Engine</span><strong>${scrapeEngineRunning ? "On" : "Off"}</strong></div>
+    `;
+  }
+
+  if (safetyStatus) {
+    safetyStatus.textContent = lastEngineError || (scrapeEngineRunning ? "Engine running." : "Engine safety ready.");
+  }
+}
+
+function reviewActionButtons(record) {
+  if (record.nextAction === "monitor") {
+    return `
+      <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" type="button">Evaluate</button>
+      <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" type="button">Package</button>
+      <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" type="button">Reject</button>
+    `;
+  }
+
+  return `
+    <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" type="button">Reject</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="monitor" data-bounty-id="${record.id}" type="button">Monitor</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" type="button">Evaluate</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" type="button">Package</button>
+  `;
+}
+
+function renderCandidateReviewQueue() {
+  const candidates = bountyRecords
+    .filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && record.nextAction !== "discard")
+    .slice(0, 8);
+
+  if (reviewMeta) {
+    reviewMeta.textContent = candidates.length ? `${candidates.length} pending` : "No pending candidates.";
+  }
+
+  if (!reviewQueue) {
+    return;
+  }
+
+  if (!candidates.length) {
+    reviewQueue.innerHTML = `<p class="report-empty">No candidates waiting for review.</p>`;
+    return;
+  }
+
+  reviewQueue.innerHTML = candidates
+    .map((record) => {
+      const scoreTotal = record.scores
+        ? Object.values(record.scores).reduce((sum, value) => sum + Number(value || 0), 0)
+        : 0;
+      return `
+        <article class="review-card">
+          <div>
+            <p class="review-title">${record.id} - ${record.title}</p>
+            <p class="review-meta">${record.site} | ${record.type} | ${fmtMoney(record.price)} | due ${formatDate(record.dueDate)}</p>
+          </div>
+          <div class="review-score">
+            <span>Score</span>
+            <strong>${scoreTotal}</strong>
+          </div>
+          <div class="review-actions">
+            ${reviewActionButtons(record)}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function lastAuditForBounty(bountyId) {
+  return auditEvents.find((event) => event.bountyLocalId === bountyId) || null;
+}
+
+function hasWorkPackageSignal(record) {
+  return stageRank[record.stage] >= stageRank.shortlisted || trackedPackageIds.has(record.id) || Boolean(record.packageStatus);
+}
+
+function renderWorkPackageCenter() {
+  const packageRecords = bountyRecords.filter(hasWorkPackageSignal);
+
+  if (packageMeta) {
+    const trackedCount = packageRecords.filter((record) => trackedPackageIds.has(record.id)).length;
+    packageMeta.textContent = packageRecords.length ? `${trackedCount}/${packageRecords.length} tracked` : "No packages yet.";
+  }
+
+  if (!packageBody) {
+    return;
+  }
+
+  if (!packageRecords.length) {
+    packageBody.innerHTML = `<tr><td colspan="7">No work packages yet.</td></tr>`;
+    return;
+  }
+
+  packageBody.innerHTML = packageRecords
+    .map((record) => {
+      const folderStatus = trackedPackageIds.has(record.id) ? "tracked" : record.packageStatus || "folder_needed";
+      const syncStatus = record.supabaseSyncStatus || "pending";
+      const lastEvent = lastAuditForBounty(record.id);
+      const nextAction = record.nextAction || (stageRank[record.stage] >= stageRank.submitted ? "ops_review" : "evaluate_now");
+      return `
+        <tr>
+          <td>${record.id}</td>
+          <td>${record.stage}</td>
+          <td><span class="status ${folderStatus === "tracked" ? "status-ready" : "status-review"}">${statusText(folderStatus)}</span></td>
+          <td><span class="status ${syncStatus === "failed" ? "status-blocked" : "status-ready"}">${statusText(syncStatus)}</span></td>
+          <td>13 files</td>
+          <td>${lastEvent ? `${lastEvent.agentId}: ${statusText(lastEvent.action)}` : "--"}</td>
+          <td>${statusText(nextAction)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderAuditTrail() {
+  if (auditMeta) {
+    auditMeta.textContent = auditEvents.length ? `${auditEvents.length} events` : "No events yet.";
+  }
+
+  if (!auditList) {
+    return;
+  }
+
+  if (!auditEvents.length) {
+    auditList.innerHTML = `<p class="report-empty">No audit events recorded in this session.</p>`;
+    return;
+  }
+
+  auditList.innerHTML = auditEvents
+    .slice(0, 12)
+    .map((event) => {
+      return `
+        <div class="audit-item">
+          <span class="audit-dot"></span>
+          <div>
+            <p class="audit-title">${event.bountyLocalId || "system"} | ${event.agentId} | ${statusText(event.action)}</p>
+            <p class="audit-meta">${event.fromStage || "--"} -> ${event.toStage || "--"} | ${event.reason || "No reason"} | ${event.createdAt.toLocaleTimeString("en-US")}</p>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function renderScoutStatus() {
   const scout = agents.find((a) => a.id === "scout");
 
@@ -1603,6 +1830,7 @@ function createRandomBounty() {
     fixRequired: FIX_BY_TYPE[type],
     price,
     stage: BOUNTY_STAGES.DISCOVERED,
+    appRunMode,
     dueDate,
     retrievedAt: new Date().toISOString(),
     confidence: Number((0.62 + Math.random() * 0.25).toFixed(2)),
@@ -1984,6 +2212,10 @@ function renderAll() {
   renderJobs();
   renderFlow();
   renderFunnel();
+  renderControlTower();
+  renderCandidateReviewQueue();
+  renderWorkPackageCenter();
+  renderAuditTrail();
   renderBountyDisclosure(bountyRecords.find((r) => r.id === selectedBountyId) || null);
   renderSolvedBounties();
   renderScoutStatus();
@@ -2122,6 +2354,117 @@ function resetDashboard() {
   setModeButtonActive(null);
 }
 
+function applyEngineMode(mode) {
+  if (!Object.values(APP_MODE).includes(mode)) {
+    return;
+  }
+  appRunMode = mode;
+  recordAuditEvent({
+    action: "mode_changed",
+    fromStage: null,
+    toStage: mode,
+    reason: "Operator changed engine mode"
+  });
+  if (mode !== APP_MODE.SIMULATION) {
+    scrapeSchedule.lastRunMode = `${normalizeModeLabel(mode)} armed`;
+  }
+  renderAll();
+}
+
+function stopAllEngines(reason = "Kill switch engaged") {
+  simRunning = false;
+  scrapeEngineRunning = false;
+  clearScoutWorkState();
+  stopSimulation();
+  lastCycleAt = null;
+  for (const agent of agents) {
+    agent.mood = "Standby";
+  }
+  lastEngineError = reason;
+  recordAuditEvent({ action: "kill_switch", reason });
+  setSimButtonState();
+  setScrapeButtonState();
+  setCadenceButtonsEnabled();
+  renderAll();
+}
+
+function rejectCandidate(record) {
+  record.nextAction = "discard";
+  record.redFlags = [...(record.redFlags || []), "operator_rejected"];
+  void persistBountyCandidate(record);
+  void persistAgentEvent({
+    record,
+    agentId: "scout",
+    action: "candidate_rejected",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: "Operator rejected candidate"
+  });
+}
+
+function monitorCandidate(record) {
+  record.nextAction = "monitor";
+  void persistBountyCandidate(record);
+  void persistAgentEvent({
+    record,
+    agentId: "scout",
+    action: "candidate_monitored",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: "Operator moved candidate to monitor"
+  });
+}
+
+function evaluateCandidate(record) {
+  const previousStage = record.stage;
+  record.stage = BOUNTY_STAGES.SHORTLISTED;
+  record.nextAction = "evaluate_now";
+  void persistBountyCandidate(record);
+  void persistAgentEvent({
+    record,
+    agentId: "scout",
+    action: "candidate_approved",
+    fromStage: previousStage,
+    toStage: record.stage,
+    reason: "Operator approved candidate for feasibility"
+  });
+  trackPipelinePackage(record, "Prepared approved bounty package");
+}
+
+function packageCandidate(record) {
+  record.nextAction = "package_only";
+  record.packageStatus = trackDirHandle ? record.packageStatus || "pending" : "folder_needed";
+  void persistBountyCandidate(record);
+  void writeWorkPackage(record, "Prepared manual candidate package");
+  void persistAgentEvent({
+    record,
+    agentId: "ops",
+    action: "package_requested",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: "Operator requested work package"
+  });
+}
+
+function handleReviewAction(action, bountyId) {
+  const record = bountyRecords.find((item) => item.id === bountyId);
+  if (!record) {
+    return;
+  }
+
+  if (action === "reject") {
+    rejectCandidate(record);
+  } else if (action === "monitor") {
+    monitorCandidate(record);
+  } else if (action === "evaluate") {
+    evaluateCandidate(record);
+  } else if (action === "package") {
+    packageCandidate(record);
+  }
+
+  renderAll();
+}
+
 function runScheduler() {
   if (!simRunning) {
     return;
@@ -2153,6 +2496,29 @@ function runScheduler() {
 filterSelect.addEventListener("change", renderJobs);
 
 resetBtn.addEventListener("click", resetDashboard);
+if (modeSwitch) {
+  modeSwitch.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-mode]");
+    if (!btn) {
+      return;
+    }
+    applyEngineMode(btn.dataset.mode);
+  });
+}
+if (killSwitchBtn) {
+  killSwitchBtn.addEventListener("click", () => {
+    stopAllEngines();
+  });
+}
+if (reviewQueue) {
+  reviewQueue.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-review-action]");
+    if (!btn) {
+      return;
+    }
+    handleReviewAction(btn.dataset.reviewAction, btn.dataset.bountyId);
+  });
+}
 scrapeEngineBtn.addEventListener("click", toggleScrapeEngine);
 connectTrackBtn.addEventListener("click", async () => {
   await connectTrackFolder();

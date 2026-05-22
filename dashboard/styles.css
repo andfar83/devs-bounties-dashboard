@@ -432,6 +432,181 @@ h1 {
   z-index: 10;
 }
 
+.panel-control,
+.panel-review,
+.panel-packages,
+.panel-audit {
+  grid-column: span 12;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(320px, 1.6fr) minmax(190px, 0.6fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.control-block {
+  border: 1px solid rgba(166, 192, 214, 0.18);
+  border-radius: 8px;
+  padding: 0.7rem;
+  background: rgba(8, 17, 26, 0.52);
+}
+
+.control-label {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.segment {
+  min-height: 34px;
+  border: 1px solid rgba(166, 192, 214, 0.22);
+  border-radius: 7px;
+  background: rgba(10, 23, 35, 0.72);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.segment.is-active {
+  border-color: rgba(125, 211, 252, 0.82);
+  color: #dff6ff;
+  background: rgba(0, 166, 251, 0.18);
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.health-tile {
+  border: 1px solid rgba(166, 192, 214, 0.16);
+  border-radius: 7px;
+  padding: 0.45rem;
+  min-height: 54px;
+}
+
+.health-tile span,
+.review-meta,
+.audit-meta {
+  display: block;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.health-tile strong {
+  display: block;
+  margin-top: 0.18rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.control-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  justify-content: center;
+}
+
+.btn-danger {
+  background: rgba(255, 107, 107, 0.14);
+  border-color: rgba(255, 107, 107, 0.55);
+  color: #ffd7d7;
+}
+
+.review-queue {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.review-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 74px auto;
+  gap: 0.7rem;
+  align-items: center;
+  border: 1px solid rgba(166, 192, 214, 0.18);
+  border-radius: 8px;
+  padding: 0.65rem;
+  background: rgba(8, 17, 26, 0.58);
+}
+
+.review-title,
+.audit-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.review-meta,
+.audit-meta {
+  margin: 0.2rem 0 0;
+}
+
+.review-score {
+  border: 1px solid rgba(166, 192, 214, 0.18);
+  border-radius: 7px;
+  padding: 0.4rem;
+  text-align: center;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.review-score span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.review-score strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.audit-list {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.audit-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  border: 1px solid rgba(166, 192, 214, 0.15);
+  border-radius: 8px;
+  padding: 0.55rem;
+  background: rgba(8, 17, 26, 0.46);
+}
+
+.audit-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 0.28rem;
+  border-radius: 999px;
+  background: #7df4a4;
+  box-shadow: 0 0 10px rgba(125, 244, 164, 0.42);
+}
+
 .agent-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1066,6 +1241,11 @@ th {
   .layout > .panel:nth-child(3) {
     grid-column: span 6;
   }
+
+  .panel-review,
+  .panel-audit {
+    grid-column: span 6;
+  }
 }
 
 @media (max-width: 860px) {
@@ -1077,6 +1257,15 @@ th {
   .user-profile {
     order: 99;
     max-width: 100%;
+  }
+
+  .control-grid,
+  .review-card {
+    grid-template-columns: 1fr;
+  }
+
+  .health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .agent-grid {
@@ -1102,6 +1291,15 @@ th {
 
   .user-display-email {
     display: none;
+  }
+
+  .segmented-control,
+  .health-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .review-actions {
+    justify-content: flex-start;
   }
 
   .agent-grid {

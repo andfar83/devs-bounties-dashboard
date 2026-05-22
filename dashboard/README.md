@@ -1,5 +1,7 @@
 # Dashboard Overview
 
+Full current-state documentation is available in [`APP_DOCUMENTATION.md`](./APP_DOCUMENTATION.md).
+
 ## Agent Roster
 
 1. `Atlas` - Scout Agent - color `#2EC4B6`
@@ -69,6 +71,14 @@ The dashboard uses four synchronized views:
   - `ops/submission-checklist.md`, `submission_log.md`, `post_submit_plan.md`.
 - The dashboard also defines Supabase contracts for candidates, scrape runs, agent events, work packages, artifacts, and submission logs.
 - Run [`supabase-bounty-workflow.sql`](./supabase-bounty-workflow.sql) once to create the workflow tables, RLS policies, and private `bounty-artifacts` Storage bucket.
+
+## Control Tower Readiness
+
+- `Control Tower` exposes the operating mode: `simulation`, `shadow_real`, or `live_real`.
+- `Health` summarizes last run counts, review queue size, package coverage, sync errors, and engine state.
+- `Candidate Review Queue` supports reject, monitor, evaluate, and package actions before work moves downstream.
+- `Work Package Center` shows local folder status, Supabase sync status, artifact count, last event, and next action.
+- `Audit Trail` records operator and agent events in-session so scrape engine behavior can be inspected before live automation.
 
 ## Local Run
 

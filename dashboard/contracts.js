@@ -44,7 +44,7 @@ export function toBountyCandidate(record, userId = null) {
     next_action: record.nextAction || "evaluate_now",
     confidence: record.confidence ?? null,
     metadata: {
-      app_mode: APP_MODE.SIMULATION,
+      app_mode: record.appRunMode || APP_MODE.SIMULATION,
       source: "dashboard-sim"
     }
   };
@@ -64,7 +64,7 @@ export function toScrapeRun({ mode, status = RUN_STATUS.RUNNING, userId = null, 
     rejected_count: stats.rejected_count || 0,
     error_message: message || null,
     metadata: {
-      app_mode: APP_MODE.SIMULATION
+      app_mode: stats.app_mode || APP_MODE.SIMULATION
     }
   };
 }
@@ -81,7 +81,7 @@ export function toAgentEvent({ record, agentId, action, fromStage = null, toStag
     reason,
     created_at: nowIso(),
     metadata: {
-      app_mode: APP_MODE.SIMULATION
+      app_mode: record?.appRunMode || APP_MODE.SIMULATION
     }
   };
 }
@@ -98,7 +98,7 @@ export function toWorkPackage(record, userId = null, folderPath = "") {
     created_at: nowIso(),
     updated_at: nowIso(),
     metadata: {
-      app_mode: APP_MODE.SIMULATION
+      app_mode: record.appRunMode || APP_MODE.SIMULATION
     }
   };
 }
