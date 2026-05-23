@@ -151,6 +151,7 @@ let lastCycleAt = null;
 let scrapeEngineRunning = false;
 let scrapeEngineButtonFocused = false;
 let scoutWorkingUntil = 0;
+let selectedCadenceMode = null;
 let lastScrapeModeKey = null;
 let reportsDirHandle = null;
 let generatedReportData = null;
@@ -213,6 +214,7 @@ const scrapeEngineBtn = document.getElementById("scrape-engine-btn");
 const scrapeFastBtn = document.getElementById("scrape-fast-btn");
 const scrapeDeepBtn = document.getElementById("scrape-deep-btn");
 const scrapeFullBtn = document.getElementById("scrape-full-btn");
+const cadenceStatus = document.getElementById("cadence-status");
 const resetBtn = document.getElementById("reset-btn");
 const lastUpdate = document.getElementById("last-update");
 const scoutStatus = document.getElementById("scout-status");
@@ -226,7 +228,7 @@ const downloadReportBtn = document.getElementById("download-report-btn");
 const reportSaveStatus = document.getElementById("report-save-status");
 const connectTrackBtn = document.getElementById("connect-track-btn");
 const trackStatus = document.getElementById("track-status");
-const trackFolderCard = document.querySelector(".track-folder-card");
+const trackFolderCard = document.querySelector(".control-archive");
 const trackFolderPath = document.getElementById("track-folder-path");
 const trackConnectionLabel = document.getElementById("track-connection-label");
 const packagePrefixLabel = document.getElementById("package-prefix-label");
@@ -1799,11 +1801,11 @@ function renderScoutStatus() {
   if (!simRunning) {
     scoutStatus.textContent = "Scout status: Off";
     if (scout) scout.mood = "Standby";
-    setModeButtonActive(null);
+    setModeButtonActive(selectedCadenceMode);
   } else if (!scrapeEngineRunning) {
     scoutStatus.textContent = "Scout status: Standby (Scrape engine off)";
     if (scout) scout.mood = "Standby";
-    setModeButtonActive(null);
+    setModeButtonActive(selectedCadenceMode);
   } else if (Date.now() < scoutWorkingUntil) {
     scoutStatus.textContent = `Scout status: Working (${scrapeSchedule.lastRunMode})`;
     if (scout) scout.mood = scrapeSchedule.lastRunMode.split(":")[0];
@@ -1811,7 +1813,7 @@ function renderScoutStatus() {
   } else {
     scoutStatus.textContent = "Scout status: Standby (waiting next cadence)";
     if (scout) scout.mood = "Standby";
-    setModeButtonActive(null);
+    setModeButtonActive(selectedCadenceMode);
   }
 
   scrapeCadence.textContent = "Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h";
@@ -2447,22 +2449,50 @@ function setScrapeButtonState() {
 }
 
 function setCadenceButtonsEnabled() {
-  const enabled = simRunning && scrapeEngineRunning;
-  scrapeFastBtn.disabled = !enabled;
-  scrapeDeepBtn.disabled = !enabled;
-  scrapeFullBtn.disabled = !enabled;
+  const disabled = simRunning && scrapeEngineRunning;
+  scrapeFastBtn.disabled = disabled;
+  scrapeDeepBtn.disabled = disabled;
+  scrapeFullBtn.disabled = disabled;
+  if (cadenceStatus) {
+    cadenceStatus.textContent = selectedCadenceMode
+      ? `Selected: ${normalizeModeLabel(selectedCadenceMode)}${disabled ? " (engine running)" : ""}`
+      : "Choose cadence before Start Engine.";
+  }
 }
 
-function startEngine(initialMode = SCRAPE_MODES.FAST) {
+function requiresTrackFolderForEngine() {
+  return appRunMode !== APP_MODE.SIMULATION;
+}
+
+function startEngine() {
+  if (!selectedCadenceMode) {
+    lastEngineError = "Choose Fast, Deep, or Full cadence before starting engine.";
+    scrapeSchedule.lastRunMode = "Engine blocked (choose cadence)";
+    setScrapeButtonState();
+    setCadenceButtonsEnabled();
+    renderAll();
+    return;
+  }
+
+  if (requiresTrackFolderForEngine() && !trackDirHandle) {
+    lastEngineError = "Connect Track Folder before starting Shadow/Live engine.";
+    scrapeSchedule.lastRunMode = "Engine blocked (connect track folder)";
+    renderTrackFolderConfig();
+    setScrapeButtonState();
+    setCadenceButtonsEnabled();
+    renderAll();
+    return;
+  }
+
   simRunning = true;
   scrapeEngineRunning = true;
   scrapeEngineButtonFocused = true;
   lastEngineError = "";
   startSimulationTimer();
   seedScrapeSchedule(Date.now());
-  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} engine started`;
-  runScrapeCycle(initialMode);
-  scheduleNextForMode(initialMode, Date.now());
+  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} engine started (${normalizeModeLabel(selectedCadenceMode)})`;
+  runScrapeCycle(selectedCadenceMode);
+  scheduleNextForMode(selectedCadenceMode, Date.now());
   setScrapeButtonState();
   setCadenceButtonsEnabled();
   renderAll();
@@ -2471,6 +2501,7 @@ function startEngine(initialMode = SCRAPE_MODES.FAST) {
 function stopEngine(reason = "Engine stopped") {
   simRunning = false;
   scrapeEngineRunning = false;
+  selectedCadenceMode = null;
   clearScoutWorkState();
   stopSimulation();
   lastCycleAt = null;
@@ -2484,13 +2515,14 @@ function stopEngine(reason = "Engine stopped") {
 }
 
 function runCadenceClick(mode) {
-  if (!simRunning || !scrapeEngineRunning) {
-    startEngine(mode);
+  if (simRunning && scrapeEngineRunning) {
     return;
   }
 
-  runScrapeCycle(mode);
-  scheduleNextForMode(mode, Date.now());
+  selectedCadenceMode = mode;
+  lastEngineError = "";
+  scrapeSchedule.lastRunMode = `${normalizeModeLabel(mode)} selected`;
+  setModeButtonActive(mode);
   setCadenceButtonsEnabled();
   renderAll();
 }
@@ -2519,18 +2551,13 @@ function pulseModeButton(btn) {
     return;
   }
   btn.classList.add("btn-mode-active");
-  setTimeout(() => {
-    if (!scrapeEngineRunning || Date.now() >= scoutWorkingUntil) {
-      btn.classList.remove("btn-mode-active");
-    }
-  }, 500);
 }
 
 function clearScoutWorkState() {
   scrapeEngineButtonFocused = false;
   scoutWorkingUntil = 0;
   lastScrapeModeKey = null;
-  setModeButtonActive(null);
+  setModeButtonActive(selectedCadenceMode);
 }
 
 function toggleScrapeEngine() {
@@ -2539,7 +2566,7 @@ function toggleScrapeEngine() {
     return;
   }
 
-  startEngine(SCRAPE_MODES.FAST);
+  startEngine();
 }
 
 function resetDashboard() {
@@ -2549,11 +2576,12 @@ function resetDashboard() {
   stopSimulation();
   lastCycleAt = null;
   clearStateForSimulation();
+  selectedCadenceMode = null;
   renderFilter();
   renderAll();
   setScrapeButtonState();
   setCadenceButtonsEnabled();
-  setModeButtonActive(null);
+  setModeButtonActive(selectedCadenceMode);
 }
 
 function applyEngineMode(mode) {
@@ -2853,7 +2881,7 @@ renderFilter();
 renderAll();
 setScrapeButtonState();
 setCadenceButtonsEnabled();
-setModeButtonActive(null);
+setModeButtonActive(selectedCadenceMode);
 setResendVisible(false);
 setPasswordVisible(signInPasswordInput, signInPasswordToggleBtn, false);
 setPasswordVisible(signUpPasswordInput, signUpPasswordToggleBtn, false);

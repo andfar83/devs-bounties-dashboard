@@ -114,11 +114,14 @@ Implemented controls:
 - `Simulation`: current simulated pipeline.
 - `Shadow Real`: intended for real scrape ingestion without automatic downstream movement.
 - `Live Real`: intended for future live automation after shadow mode is proven.
-- Header `Start Engine`: the single launch/stop control for whichever mode is selected.
-- Header cadence buttons: manual run triggers that are enabled only while the engine is active.
+- `Start Engine`: the single launch/stop control for whichever mode is selected.
+- Cadence buttons: required pre-start selection for Fast Poll, Deep Scan, or Full Refresh.
+- `Project Archive`: connects the local work-package folder before Shadow/Live runs.
 - `Kill Switch`: stops the active engine loop and scrape engine state immediately.
 
 Changing modes arms behavior only. It does not run a scrape by itself.
+Shadow Real and Live Real require a connected project archive before the engine starts.
+The engine also requires an explicit cadence selection before it starts.
 
 Health tiles show:
 

@@ -35,10 +35,12 @@ The dashboard uses four synchronized views:
 
 - `Reset`: restores default metrics/jobs and stops the engine loop.
 - `Start Engine`: starts or stops the active engine loop based on the selected Control Tower mode.
-- `Fast Poll`, `Deep Scan`, `Full Refresh`: manual scrape triggers.
-  - disabled until `Start Engine` is active.
-  - in `simulation`, they generate simulated candidates.
-  - in `shadow_real`, they sync candidates from Supabase.
+- `Connect Track Folder`: lives in Control Tower as a preflight step. It is required before starting `shadow_real` or `live_real`.
+- `Fast Poll`, `Deep Scan`, `Full Refresh`: cadence selection buttons.
+  - choose one before `Start Engine`.
+  - disabled while the engine is running so cadence cannot change mid-run.
+  - in `simulation`, the selected cadence generates simulated candidates.
+  - in `shadow_real`, the selected cadence syncs candidates from Supabase.
   - `live_real` remains guarded until the real engine is approved.
 - `Agent Filter`: isolate jobs by owner.
 - `Create Report`: generates a funnel report from the current funnel dataset.
@@ -81,6 +83,7 @@ The dashboard uses four synchronized views:
 - `Control Tower` exposes the operating mode: `simulation`, `shadow_real`, or `live_real`.
 - Changing mode arms behavior only; it does not run a scrape by itself.
 - `Start Engine` is the single launch/stop control for the selected mode.
+- `Project Archive` must be connected before Shadow/Live engines start.
 - In `shadow_real`, cadence buttons pull real candidate rows from Supabase instead of creating simulated candidates.
 - `Health` summarizes last run counts, review queue size, package coverage, sync errors, and engine state.
 - `Candidate Review Queue` supports reject, monitor, evaluate, and package actions before work moves downstream.

@@ -93,10 +93,6 @@
         </div>
         <div class="controls">
           <button id="reset-btn" class="btn btn-secondary">Reset</button>
-          <button id="scrape-engine-btn" class="btn btn-launch" type="button">Start Engine</button>
-          <button id="scrape-fast-btn" class="btn btn-secondary btn-mini">Fast Poll</button>
-          <button id="scrape-deep-btn" class="btn btn-secondary btn-mini">Deep Scan</button>
-          <button id="scrape-full-btn" class="btn btn-secondary btn-mini">Full Refresh</button>
           <div id="user-profile" class="user-profile" hidden>
             <div class="user-avatar">
               <img id="user-avatar-image" class="user-avatar-image" alt="User avatar" hidden />
@@ -191,11 +187,37 @@
                 <button class="segment" data-mode="live_real" type="button">Live Real</button>
               </div>
             </div>
+            <div class="control-block control-archive">
+              <div class="control-block-head">
+                <p class="control-label">Project Archive</p>
+                <span id="track-connection-pill" class="track-connection-pill" aria-live="polite">
+                  <span class="track-connection-dot" aria-hidden="true"></span>
+                  <span id="track-connection-label">Disconnected</span>
+                </span>
+              </div>
+              <code id="track-folder-path" class="track-folder-path">C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES</code>
+              <p class="track-folder-help">
+                Connect this before approving packages. Every challenge saves as
+                <span id="package-prefix-label">bounty-&lt;id&gt;</span>.
+              </p>
+              <button id="connect-track-btn" class="btn btn-secondary btn-report" type="button">Connect Track Folder</button>
+              <span id="track-status" class="meta">Tracking folder not connected.</span>
+            </div>
             <div class="control-block">
               <p class="control-label">Health</p>
               <div id="health-grid" class="health-grid"></div>
             </div>
+            <div class="control-block control-cadence">
+              <p class="control-label">Cadence</p>
+              <div class="cadence-actions">
+                <button id="scrape-fast-btn" class="btn btn-secondary btn-mini" type="button">Fast Poll</button>
+                <button id="scrape-deep-btn" class="btn btn-secondary btn-mini" type="button">Deep Scan</button>
+                <button id="scrape-full-btn" class="btn btn-secondary btn-mini" type="button">Full Refresh</button>
+              </div>
+              <span id="cadence-status" class="meta">Choose cadence before Start Engine.</span>
+            </div>
             <div class="control-block control-actions">
+              <button id="scrape-engine-btn" class="btn btn-launch" type="button">Start Engine</button>
               <button id="kill-switch-btn" class="btn btn-danger" type="button">Kill Switch</button>
               <span id="safety-status" class="meta">Engine safety ready.</span>
             </div>
@@ -268,25 +290,9 @@
               Funding Funnel
             </h2>
             <div class="controls">
-              <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
               <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
             </div>
           </div>
-          <div class="track-folder-card">
-            <div class="track-folder-head">
-              <p class="track-folder-label">Project archive root</p>
-              <span id="track-connection-pill" class="track-connection-pill" aria-live="polite">
-                <span class="track-connection-dot" aria-hidden="true"></span>
-                <span id="track-connection-label">Disconnected</span>
-              </span>
-            </div>
-            <code id="track-folder-path" class="track-folder-path">C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES</code>
-            <p class="track-folder-help">
-              Select this folder when connecting tracking. Every challenge is saved as
-              <span id="package-prefix-label">bounty-&lt;id&gt;</span>.
-            </p>
-          </div>
-          <span id="track-status" class="meta">Tracking folder not connected.</span>
           <div id="funnel-accordion" class="funnel"></div>
           <div id="bounty-disclosure" class="report-output" aria-live="polite">
             <p class="report-empty">Select a bounty row to view disclosure.</p>

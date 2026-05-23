@@ -378,6 +378,14 @@ h1 {
   box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.35), 0 0 14px rgba(0, 194, 168, 0.25);
 }
 
+.btn-mode-active {
+  border-color: rgba(183, 255, 53, 0.86);
+  color: #efffd0;
+  box-shadow:
+    0 0 0 1px rgba(183, 255, 53, 0.24),
+    0 0 18px rgba(57, 251, 0, 0.18);
+}
+
 .btn-launch:not(.btn-launch-active):not(:disabled):hover {
   background: linear-gradient(90deg, rgba(0, 166, 251, 0.18), rgba(0, 194, 168, 0.18));
 }
@@ -421,7 +429,7 @@ h1 {
   align-items: center;
   gap: 0.48rem;
   margin: 0 0 0.9rem;
-  font-size: 1rem;
+  font-size: 1.8rem;
 }
 
 .panel-title-row {
@@ -563,11 +571,54 @@ h1 {
 .control-actions {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) minmax(0, 1fr);
   gap: 0.8rem;
   align-items: center;
   min-height: 68px;
   max-width: 100%;
+}
+
+.control-actions .btn {
+  width: 100%;
+}
+
+.control-archive {
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.control-archive.is-connected {
+  border-color: rgba(57, 251, 0, 0.58);
+  background:
+    radial-gradient(circle at top right, rgba(57, 251, 0, 0.2), transparent 38%),
+    linear-gradient(135deg, rgba(0, 194, 168, 0.16), rgba(0, 166, 251, 0.1)),
+    rgba(6, 15, 24, 0.68);
+  box-shadow:
+    0 0 0 1px rgba(57, 251, 0, 0.14),
+    0 0 24px rgba(0, 194, 168, 0.2);
+}
+
+.control-block-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.control-block-head .control-label {
+  margin-bottom: 0;
+}
+
+.control-cadence {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.cadence-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
 }
 
 .btn-danger {
@@ -1222,13 +1273,15 @@ h1 {
   box-shadow: 0 0 10px rgba(255, 183, 77, 0.55);
 }
 
-.track-folder-card.is-connected .track-connection-pill {
+.track-folder-card.is-connected .track-connection-pill,
+.control-archive.is-connected .track-connection-pill {
   border-color: rgba(57, 251, 0, 0.5);
   color: #dfffe0;
   background: rgba(57, 251, 0, 0.1);
 }
 
-.track-folder-card.is-connected .track-connection-dot {
+.track-folder-card.is-connected .track-connection-dot,
+.control-archive.is-connected .track-connection-dot {
   background: #39fb00;
   animation: connectionPulse 1.6s ease-in-out infinite;
   box-shadow:
@@ -1460,6 +1513,10 @@ th {
 
   .control-actions {
     grid-column: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .cadence-actions {
     grid-template-columns: 1fr;
   }
 }
