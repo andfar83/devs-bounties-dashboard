@@ -2,17 +2,50 @@
   --bg-1: #09141e;
   --bg-2: #0f222f;
   --panel: rgba(10, 20, 29, 0.72);
-  --line: rgba(26, 119, 201, 0.658);
+  --line: rgb(26 151 201 / 78%);
   --text: #e8f2fb;
   --muted: #94afc6;
   --scout: #2ec4b6;
   --feas: #ff9f1c;
   --build: #4cc9f0;
   --ops: #ff6b6b;
+  --scroll-track: rgba(5, 13, 20, 0.72);
+  --scroll-thumb: rgba(125, 211, 252, 0.44);
+  --scroll-thumb-hover: rgba(183, 255, 53, 0.68);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background:
+    linear-gradient(180deg, rgba(6, 15, 24, 0.88), rgba(9, 20, 30, 0.66));
+  border-left: 1px solid rgba(125, 211, 252, 0.08);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(5, 13, 20, 0.86);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(183, 255, 53, 0.62), rgba(0, 194, 168, 0.44), rgba(76, 201, 240, 0.42));
+  box-shadow: inset 0 0 8px rgba(223, 246, 255, 0.14);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(180deg, rgba(210, 255, 102, 0.86), rgba(0, 194, 168, 0.66), rgba(76, 201, 240, 0.56));
+}
+
+::-webkit-scrollbar-corner {
+  background: rgba(5, 13, 20, 0.9);
 }
 
 /* Keep the HTML hidden attribute authoritative for all UI state toggles. */
@@ -691,6 +724,8 @@ h1 {
   gap: 0.45rem;
   max-height: 320px;
   overflow: auto;
+  padding-right: 0.25rem;
+  scrollbar-gutter: stable;
 }
 
 .audit-item {
@@ -728,6 +763,8 @@ h1 {
   background: rgba(8, 17, 26, 0.7);
   overflow: visible;
   z-index: 1;
+  isolation: isolate;
+  transform: translateZ(0);
 }
 
 .agent-card:hover,
@@ -894,23 +931,31 @@ h1 {
   left: 0;
   right: 0;
   min-height: 100%;
+  visibility: hidden;
   opacity: 0;
   transform: translateY(10px);
-  transition: opacity 220ms ease, transform 220ms ease;
-  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms;
+  pointer-events: auto;
   z-index: 300;
   padding: 0.8rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.15), rgba(4, 12, 20, 0.62));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, transparent), transparent 40%),
+    linear-gradient(140deg, rgba(20, 42, 56, 0.96), rgba(4, 12, 20, 0.94));
   backdrop-filter: blur(10px);
+  will-change: opacity, transform;
+  backface-visibility: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(125, 211, 252, 0.08);
 }
 
 .agent-card:hover .agent-tooltip,
 .agent-card:focus-within .agent-tooltip,
 .agent-card:focus .agent-tooltip {
+  visibility: visible;
   opacity: 1;
   transform: translateY(0);
+  transition-delay: 0s;
 }
 
 .tooltip-head {
@@ -958,6 +1003,7 @@ h1 {
   max-height: 110px;
   overflow-y: auto;
   padding-right: 0.2rem;
+  scrollbar-gutter: stable;
 }
 
 .stat {
@@ -1153,6 +1199,7 @@ h1 {
 .detail-table-wrap {
   overflow: auto;
   max-height: 215px;
+  scrollbar-gutter: stable;
 }
 
 .detail-table {
@@ -1405,6 +1452,7 @@ h1 {
 
 .table-wrap {
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 table {
