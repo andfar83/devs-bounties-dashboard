@@ -355,8 +355,8 @@ h1 {
 
 .btn-secondary {
   background: transparent;
-  border-color: var(--line);
-  color: var(--text);
+  background: #00ff4759;
+  color: lime;
 }
 
 .btn-mini {
