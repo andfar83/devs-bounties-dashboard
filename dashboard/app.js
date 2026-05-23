@@ -1947,11 +1947,17 @@ function buildReportDataset() {
 }
 
 function reportToSheetRows(reportData) {
-  const rows = [
-    ["Funding Funnel Report"],
-    ["Generated At", reportData.generatedAt.toLocaleString("en-US")],
-    [],
-    ["KPI", "Value"],
+  const kpiReadouts = {
+    "Discovered": "New opportunities found",
+    "Submitted": "Sent to platform/reviewer",
+    "Won": "Accepted or awarded",
+    "Paid USD": "Revenue collected",
+    "Overdues": "Needs attention",
+    "Win Rate %": "Won divided by discovered",
+    "Open Value USD": "Potential still open",
+    "Average Ticket USD": "Average bounty size"
+  };
+  const kpis = [
     ["Discovered", reportData.kpis.discovered],
     ["Submitted", reportData.kpis.submitted],
     ["Won", reportData.kpis.won],
@@ -1959,7 +1965,24 @@ function reportToSheetRows(reportData) {
     ["Overdues", reportData.kpis.overdues],
     ["Win Rate %", reportData.kpis.winRate],
     ["Open Value USD", reportData.kpis.openValue],
-    ["Average Ticket USD", reportData.kpis.avgTicket],
+    ["Average Ticket USD", reportData.kpis.avgTicket]
+  ];
+  const rows = [
+    ["Funding Funnel Report", "", "", "", "", "", "", "", ""],
+    [`Generated At: ${reportData.generatedAt.toLocaleString("en-US")}`, "", "", "", "", "", "", "", ""],
+    [],
+    ["KPI", "Value", "Readout", "", "Report Purpose", "", "", "", ""],
+    ...kpis.map(([label, value], index) => {
+      const row = [label, value, kpiReadouts[label] || "", "", "", "", "", "", ""];
+      if (index === 0) {
+        row[4] = "Readable funding snapshot: scan KPI health first, then review each bounty row below. Columns are widened and wrapped so URLs, dates, money, and status values remain visible.";
+      }
+      if (index === 5) {
+        row[4] = "Legend\nGreen = paid/won\nGold = active/open\nRed = overdue risk";
+        row[7] = "Tip\nUse the filters in row 14 to sort by stage, due date, or payout.";
+      }
+      return row;
+    }),
     [],
     ["ID", "Site", "Site URL", "Type", "Price USD", "Stage", "Won", "Overdue", "Due Date"]
   ];
@@ -1970,6 +1993,245 @@ function reportToSheetRows(reportData) {
   return rows;
 }
 
+function applyReportWorkbookLayout(sheet, reportData) {
+  const lastRow = 14 + reportData.rows.length;
+  const lastCol = 9;
+  const rgb = (value) => ({ rgb: value });
+  const borderSide = (color = "B7C7D4", style = "thin") => ({ style, color: rgb(color) });
+  const thinBorder = {
+    top: borderSide(),
+    right: borderSide(),
+    bottom: borderSide(),
+    left: borderSide()
+  };
+  const headerBorder = {
+    top: borderSide("1EA7B8", "medium"),
+    right: borderSide(),
+    bottom: borderSide("1EA7B8", "medium"),
+    left: borderSide()
+  };
+  const palette = {
+    navy: "07131D",
+    navy2: "0B1E2D",
+    teal: "DDF7FA",
+    lime: "EAFCD8",
+    gold: "FFF3C4",
+    red: "FFE1E1",
+    blue: "E7F1FF",
+    gray: "EEF4F8",
+    white: "FFFFFF",
+    text: "17212B",
+    muted: "52677A",
+    pale: "F6FAFC",
+    purpose: "F2FBFD"
+  };
+  const baseStyle = {
+    font: { name: "Aptos", sz: 10, color: rgb(palette.text) },
+    alignment: { vertical: "center", wrapText: true },
+    border: thinBorder,
+    fill: { fgColor: rgb(palette.white) }
+  };
+  const cellRef = (rowNumber, colNumber) => window.XLSX.utils.encode_cell({ r: rowNumber - 1, c: colNumber - 1 });
+  const ensureCell = (rowNumber, colNumber) => {
+    const ref = cellRef(rowNumber, colNumber);
+    if (!sheet[ref]) {
+      sheet[ref] = { t: "s", v: "" };
+    }
+    return sheet[ref];
+  };
+  const mergeStyle = (...styles) => {
+    return styles.reduce((merged, style) => {
+      for (const [key, value] of Object.entries(style || {})) {
+        merged[key] = { ...(merged[key] || {}), ...value };
+      }
+      return merged;
+    }, {});
+  };
+  const applyStyle = (rowNumber, colNumber, style) => {
+    const cell = ensureCell(rowNumber, colNumber);
+    cell.s = mergeStyle(baseStyle, cell.s, style);
+    return cell;
+  };
+  const styleRange = (startRow, endRow, startCol, endCol, style) => {
+    for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+      for (let colNumber = startCol; colNumber <= endCol; colNumber += 1) {
+        applyStyle(rowNumber, colNumber, style);
+      }
+    }
+  };
+  const headerStyle = {
+    font: { name: "Aptos", sz: 10, bold: true, color: rgb(palette.white) },
+    fill: { fgColor: rgb(palette.navy2) },
+    alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    border: headerBorder
+  };
+
+  styleRange(1, Math.max(lastRow, 16), 1, lastCol, baseStyle);
+  sheet["!cols"] = [
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 34 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 15 },
+    { wch: 11 },
+    { wch: 12 },
+    { wch: 14 }
+  ];
+  sheet["!rows"] = [
+    { hpt: 30 },
+    { hpt: 21 },
+    { hpt: 8 },
+    { hpt: 24 },
+    ...Array.from({ length: 8 }, () => ({ hpt: 24 })),
+    { hpt: 8 },
+    { hpt: 26 },
+    ...Array.from({ length: reportData.rows.length }, () => ({ hpt: 30 }))
+  ];
+  sheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } },
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 8 } },
+    { s: { r: 4, c: 4 }, e: { r: 7, c: 8 } },
+    { s: { r: 9, c: 4 }, e: { r: 11, c: 5 } },
+    { s: { r: 9, c: 7 }, e: { r: 11, c: 8 } }
+  ];
+  sheet["!autofilter"] = { ref: `A14:I${Math.max(lastRow, 14)}` };
+  sheet["!freeze"] = { xSplit: 0, ySplit: 14, topLeftCell: "A15", activePane: "bottomLeft", state: "frozen" };
+  sheet["!ref"] = `A1:I${Math.max(lastRow, 16)}`;
+
+  styleRange(1, 2, 1, lastCol, {
+    fill: { fgColor: rgb(palette.navy) },
+    font: { name: "Aptos", color: rgb("B9D8E8") },
+    border: { bottom: borderSide("1F3B4D") }
+  });
+  applyStyle(1, 1, {
+    font: { name: "Aptos Display", sz: 20, bold: true, color: rgb(palette.white) },
+    alignment: { horizontal: "left", vertical: "center", wrapText: true }
+  });
+  applyStyle(2, 1, {
+    font: { name: "Aptos", sz: 10, italic: true, color: rgb("B9D8E8") },
+    alignment: { horizontal: "left", vertical: "center", wrapText: true }
+  });
+  styleRange(3, 3, 1, lastCol, { fill: { fgColor: rgb(palette.pale) }, border: {} });
+  styleRange(13, 13, 1, lastCol, { fill: { fgColor: rgb(palette.pale) }, border: {} });
+
+  styleRange(4, 4, 1, 3, headerStyle);
+  styleRange(4, 4, 5, 9, headerStyle);
+  styleRange(14, 14, 1, lastCol, headerStyle);
+
+  const kpiFills = {
+    5: palette.teal,
+    6: palette.gold,
+    7: palette.lime,
+    8: palette.lime,
+    9: palette.red,
+    10: palette.blue,
+    11: palette.gold,
+    12: palette.blue
+  };
+  for (let rowNumber = 5; rowNumber <= 12; rowNumber += 1) {
+    const baseFill = rowNumber % 2 ? palette.white : palette.gray;
+    styleRange(rowNumber, rowNumber, 1, 3, { fill: { fgColor: rgb(baseFill) } });
+    applyStyle(rowNumber, 1, { fill: { fgColor: rgb(kpiFills[rowNumber]) }, font: { bold: true } });
+    applyStyle(rowNumber, 2, {
+      fill: { fgColor: rgb(kpiFills[rowNumber]) },
+      alignment: { horizontal: "right", vertical: "center", wrapText: true }
+    });
+    applyStyle(rowNumber, 3, { font: { sz: 9, color: rgb(palette.muted) } });
+  }
+
+  styleRange(5, 8, 5, 9, {
+    fill: { fgColor: rgb(palette.purpose) },
+    alignment: { horizontal: "left", vertical: "top", wrapText: true }
+  });
+  styleRange(10, 12, 5, 6, {
+    fill: { fgColor: rgb("F9FCF6") },
+    alignment: { horizontal: "left", vertical: "center", wrapText: true },
+    font: { sz: 9 }
+  });
+  styleRange(10, 12, 8, 9, {
+    fill: { fgColor: rgb(palette.pale) },
+    alignment: { horizontal: "left", vertical: "center", wrapText: true },
+    font: { sz: 9 }
+  });
+
+  const currencyCells = ["B8", "B11", "B12"];
+  for (const cellRef of currencyCells) {
+    if (sheet[cellRef]) {
+      sheet[cellRef].z = "$#,##0";
+    }
+  }
+  if (sheet.B10) {
+    sheet.B10.z = "0.0\\%";
+  }
+
+  for (let rowNumber = 15; rowNumber <= lastRow; rowNumber += 1) {
+    const rowFill = rowNumber % 2 ? palette.white : "F7FBFD";
+    styleRange(rowNumber, rowNumber, 1, lastCol, {
+      fill: { fgColor: rgb(rowFill) },
+      alignment: { vertical: "top", wrapText: true }
+    });
+    const priceCell = sheet[`E${rowNumber}`];
+    if (priceCell) {
+      priceCell.z = "$#,##0";
+      priceCell.s = mergeStyle(priceCell.s, { alignment: { horizontal: "right", vertical: "top" } });
+    }
+
+    const stageValue = String(sheet[`F${rowNumber}`]?.v || "").toLowerCase();
+    const stageFill = {
+      discovered: palette.teal,
+      shortlisted: palette.gold,
+      submitted: palette.gold,
+      won: palette.lime,
+      paid: palette.lime
+    }[stageValue];
+    if (stageFill) {
+      applyStyle(rowNumber, 6, {
+        fill: { fgColor: rgb(stageFill) },
+        font: { bold: true },
+        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+      });
+    }
+
+    const wonValue = String(sheet[`G${rowNumber}`]?.v || "").toLowerCase();
+    if (wonValue === "yes") {
+      applyStyle(rowNumber, 7, {
+        fill: { fgColor: rgb(palette.lime) },
+        font: { bold: true, color: rgb("245A12") },
+        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+      });
+    } else {
+      applyStyle(rowNumber, 7, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+    }
+
+    const overdueValue = String(sheet[`H${rowNumber}`]?.v || "").toLowerCase();
+    if (overdueValue === "yes") {
+      applyStyle(rowNumber, 8, {
+        fill: { fgColor: rgb(palette.red) },
+        font: { bold: true, color: rgb("9C1E1E") },
+        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+      });
+    } else {
+      applyStyle(rowNumber, 8, {
+        fill: { fgColor: rgb("EEF8F0") },
+        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+      });
+    }
+
+    applyStyle(rowNumber, 3, { font: { color: rgb("0563C1"), underline: true } });
+    applyStyle(rowNumber, 6, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+    applyStyle(rowNumber, 9, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+  }
+
+  for (let rowNumber = 15; rowNumber <= lastRow; rowNumber += 1) {
+    const urlCell = sheet[`C${rowNumber}`];
+    if (urlCell?.v) {
+      urlCell.l = { Target: String(urlCell.v), Tooltip: "Open bounty source" };
+    }
+  }
+}
+
 function toWorkbookBytes(reportData) {
   if (!window.XLSX) {
     return null;
@@ -1977,6 +2239,7 @@ function toWorkbookBytes(reportData) {
 
   const wb = window.XLSX.utils.book_new();
   const sheet = window.XLSX.utils.aoa_to_sheet(reportToSheetRows(reportData));
+  applyReportWorkbookLayout(sheet, reportData);
   window.XLSX.utils.book_append_sheet(wb, sheet, "Funding Report");
   return window.XLSX.write(wb, { type: "array", bookType: "xlsx" });
 }
