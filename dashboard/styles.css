@@ -2,7 +2,7 @@
   --bg-1: #09141e;
   --bg-2: #0f222f;
   --panel: rgba(10, 20, 29, 0.72);
-  --line: rgba(166, 192, 214, 0.2);
+  --line: rgba(26, 119, 201, 0.658);
   --text: #e8f2fb;
   --muted: #94afc6;
   --scout: #2ec4b6;
@@ -1190,7 +1190,7 @@ h1 {
 
 .btn-report {
   padding: 0.45rem 0.75rem;
-  font-size: 0.74rem;
+  font-size: 0.94rem;
 }
 
 .report-output {
@@ -1337,6 +1337,7 @@ h1 {
 
 .report-title {
   font-weight: 700;
+  font-size: 1.8rem;
 }
 
 .report-stamp {
