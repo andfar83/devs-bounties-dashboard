@@ -52,6 +52,11 @@ export const STORAGE_BUCKETS = {
   BOUNTY_ARTIFACTS: "bounty-artifacts"
 };
 
+export const LOCAL_TRACKING_CONFIG = {
+  RECOMMENDED_ROOT: "C:\\Users\\andre\\APPS\\AA-STUDIO\\BOUNTY_WORK_PACKAGES",
+  PACKAGE_PREFIX: "bounty-"
+};
+
 export const LOCAL_PACKAGE_FOLDERS = {
   CHALLENGE: "challenge",
   FEASIBILITY: "feasibility",

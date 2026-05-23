@@ -121,7 +121,7 @@
           <div id="agent-grid" class="agent-grid"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-flow">
           <h2>Flow View</h2>
           <div id="flow-track" class="flow-track">
             <div class="flow-step step-scout">
@@ -217,13 +217,21 @@
           <div id="audit-list" class="audit-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-funnel">
           <div class="panel-title-row">
             <h2>Funding Funnel</h2>
             <div class="controls">
               <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
               <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
             </div>
+          </div>
+          <div class="track-folder-card">
+            <p class="track-folder-label">Project archive root</p>
+            <code id="track-folder-path" class="track-folder-path">C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES</code>
+            <p class="track-folder-help">
+              Select this folder when connecting tracking. Every challenge is saved as
+              <span id="package-prefix-label">bounty-&lt;id&gt;</span>.
+            </p>
           </div>
           <span id="track-status" class="meta">Tracking folder not connected.</span>
           <div id="funnel-accordion" class="funnel"></div>

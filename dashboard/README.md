@@ -64,6 +64,8 @@ The dashboard uses four synchronized views:
 ## Work Package Storage
 
 - `Connect Track Folder` now prepares a full local package for every bounty that reaches `shortlisted` or later.
+- Recommended local archive root: `C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES`.
+- The deployed app must still ask the operator to select that folder because browsers cannot write to arbitrary local paths without permission.
 - Packages are written as `bounty-<id>/` with:
   - `challenge/source.json`, `rules.md`, `retrieved-page.html`,
   - `feasibility/feasibility_report.md`, `effort_estimate.json`, `risk_register.json`,

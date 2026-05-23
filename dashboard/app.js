@@ -1,6 +1,6 @@
 ﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { APP_MODE, BOUNTY_STAGES, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
+import { APP_MODE, BOUNTY_STAGES, LOCAL_TRACKING_CONFIG, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
 import {
   buildWorkPackageFiles,
   toAgentEvent,
@@ -174,6 +174,7 @@ const AUTH_EMAIL_REDIRECT_TO = SUPABASE_CONFIG.AUTH_EMAIL_REDIRECT_TO;
 
 const appShell = document.getElementById("app-shell");
 const authGate = document.getElementById("auth-gate");
+const topbar = document.querySelector(".topbar");
 const signInEmailInput = document.getElementById("signin-email");
 const signInPasswordInput = document.getElementById("signin-password");
 const signInPasswordToggleBtn = document.getElementById("signin-password-toggle");
@@ -217,6 +218,8 @@ const downloadReportBtn = document.getElementById("download-report-btn");
 const reportSaveStatus = document.getElementById("report-save-status");
 const connectTrackBtn = document.getElementById("connect-track-btn");
 const trackStatus = document.getElementById("track-status");
+const trackFolderPath = document.getElementById("track-folder-path");
+const packagePrefixLabel = document.getElementById("package-prefix-label");
 const bountyDisclosure = document.getElementById("bounty-disclosure");
 const solvedBody = document.getElementById("solved-body");
 const solvedMeta = document.getElementById("solved-meta");
@@ -943,7 +946,7 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
 
   packageInFlightIds.add(record.id);
   try {
-    const folderName = `bounty-${record.id}`;
+    const folderName = `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`;
     const folderHandle = await trackDirHandle.getDirectoryHandle(folderName, { create: true });
     const files = buildWorkPackageFiles(record);
     for (const file of files) {
@@ -1944,7 +1947,7 @@ async function connectTrackFolder() {
       return;
     }
     trackDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-    trackStatus.textContent = "Tracking folder connected.";
+    trackStatus.textContent = `Tracking folder connected: ${trackDirHandle.name}. Packages save as ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>.`;
     for (const record of bountyRecords.filter((item) => stageRank[item.stage] >= stageRank.shortlisted)) {
       await writeWorkPackage(record, "Prepared active bounty package");
     }
@@ -1953,6 +1956,18 @@ async function connectTrackFolder() {
     }
   } catch (error) {
     trackStatus.textContent = "Tracking folder connection canceled.";
+  }
+}
+
+function renderTrackFolderConfig() {
+  if (trackFolderPath) {
+    trackFolderPath.textContent = LOCAL_TRACKING_CONFIG.RECOMMENDED_ROOT;
+  }
+  if (packagePrefixLabel) {
+    packagePrefixLabel.textContent = `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>`;
+  }
+  if (trackStatus && !trackDirHandle) {
+    trackStatus.textContent = `Tracking folder not connected. Select ${LOCAL_TRACKING_CONFIG.RECOMMENDED_ROOT}.`;
   }
 }
 
@@ -2465,6 +2480,36 @@ function handleReviewAction(action, bountyId) {
   renderAll();
 }
 
+let lastScrollY = window.scrollY;
+let scrollTicking = false;
+
+function updateTopbarVisibility() {
+  if (!topbar) {
+    return;
+  }
+
+  const currentScrollY = Math.max(0, window.scrollY);
+  const delta = currentScrollY - lastScrollY;
+  const isNearTop = currentScrollY < 80;
+
+  if (isNearTop || delta < -8) {
+    topbar.classList.remove("topbar-hidden");
+  } else if (delta > 8 && currentScrollY > 140) {
+    topbar.classList.add("topbar-hidden");
+  }
+
+  lastScrollY = currentScrollY;
+  scrollTicking = false;
+}
+
+function handleWindowScroll() {
+  if (scrollTicking) {
+    return;
+  }
+  scrollTicking = true;
+  window.requestAnimationFrame(updateTopbarVisibility);
+}
+
 function runScheduler() {
   if (!simRunning) {
     return;
@@ -2628,6 +2673,7 @@ if (userAvatarImage && userAvatarFallback) {
     userAvatarFallback.hidden = false;
   });
 }
+window.addEventListener("scroll", handleWindowScroll, { passive: true });
 
 window.addEventListener("beforeunload", () => {
   simRunning = false;
@@ -2648,6 +2694,7 @@ setResendVisible(false);
 setPasswordVisible(signInPasswordInput, signInPasswordToggleBtn, false);
 setPasswordVisible(signUpPasswordInput, signUpPasswordToggleBtn, false);
 setPasswordVisible(signUpPasswordConfirmInput, signUpPasswordConfirmToggleBtn, false);
+renderTrackFolderConfig();
 bootstrapAuth();
 
 

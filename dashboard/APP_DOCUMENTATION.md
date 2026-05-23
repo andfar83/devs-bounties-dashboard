@@ -224,6 +224,15 @@ The dashboard supports local work package creation through `Connect Track Folder
 
 Because a deployed browser app cannot write to an arbitrary local folder without user permission, the user selects a folder manually.
 
+Recommended local archive root:
+
+```txt
+C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES
+```
+
+This folder already exists on the operator machine and contains a local `README.md`.
+When the operator clicks `Connect Track Folder`, they should select this exact folder.
+
 Package folder format:
 
 ```txt
