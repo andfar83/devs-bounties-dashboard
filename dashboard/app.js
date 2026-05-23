@@ -115,7 +115,7 @@ const initialAgents = [
       "Benchmarks outputs against baseline and target metrics",
       "Packages reproducible artifacts for submission"
     ],
-    color: "#4cc9f0",
+    color: "#39fb00",
     mood: "Standby",
     queue: 0,
     completed: 0,

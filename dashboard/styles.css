@@ -309,15 +309,16 @@ h1 {
 }
 
 .user-display-name {
-  font-size: 0.78rem;
+  font-size: 1rem;
   color: var(--text);
   font-weight: 600;
 }
 
+
 .user-display-email {
   margin-top: 0.05rem;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.66rem;
+  font-size: 0.8rem;
   color: var(--muted);
 }
 
