@@ -1,0 +1,25 @@
+[
+  {
+    "externalId": "fixture-render-001",
+    "site": "ManualFixture",
+    "siteUrl": "https://example.com/bounties/render-001",
+    "type": "Rendering",
+    "title": "Shadow Real fixture rendering challenge",
+    "description": "Fixture candidate used to validate Supabase ingestion before connecting live scrape adapters.",
+    "scope": "Validate challenge capture, scoring, review queue visibility, and package creation flow.",
+    "fixRequired": "Produce a reproducible visual improvement with evidence and patch artifacts.",
+    "price": 1200,
+    "stage": "discovered",
+    "dueDate": "2026-06-30",
+    "confidence": 0.74,
+    "scores": {
+      "fit": 20,
+      "payoutQuality": 14,
+      "deadlineFeasibility": 12,
+      "winProbability": 11,
+      "strategicValue": 7,
+      "platformTrust": 8
+    },
+    "redFlags": []
+  }
+]

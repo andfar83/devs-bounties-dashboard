@@ -50,10 +50,43 @@ export function toBountyCandidate(record, userId = null) {
   };
 }
 
+export function fromBountyCandidate(row) {
+  const metadata = row?.metadata || {};
+  const deadline = row?.deadline_utc ? new Date(row.deadline_utc).toISOString().slice(0, 10) : "";
+  const localId = row?.local_id || row?.external_id || `remote-${row?.id || Date.now()}`;
+
+  return {
+    id: localId,
+    externalId: row?.external_id || localId,
+    dedupeKey: row?.dedupe_key || "",
+    site: row?.platform || "Unknown",
+    siteUrl: row?.source_url || "",
+    type: row?.bounty_type || "Unknown",
+    title: row?.title || "Untitled bounty",
+    description: row?.description || "",
+    scope: row?.scope_statement || "",
+    fixRequired: row?.fix_required || "",
+    price: Number(row?.payout_usd || 0),
+    stage: row?.stage || BOUNTY_STAGES.DISCOVERED,
+    appRunMode: metadata.app_mode || APP_MODE.SHADOW_REAL,
+    dueDate: deadline,
+    retrievedAt: row?.retrieved_at || row?.created_at || nowIso(),
+    confidence: row?.confidence ?? null,
+    nextAction: row?.next_action || "evaluate_now",
+    scores: row?.scores || {},
+    redFlags: Array.isArray(row?.red_flags) ? row.red_flags : [],
+    metadata,
+    supabaseSyncStatus: "synced",
+    packageStatus: ""
+  };
+}
+
 export function toScrapeRun({ mode, status = RUN_STATUS.RUNNING, userId = null, stats = {}, message = "" }) {
   return {
     contract_version: CONTRACT_VERSION,
     user_id: userId,
+    source_key: stats.source_key || null,
+    app_mode: stats.app_mode || APP_MODE.SIMULATION,
     mode,
     status,
     started_at: stats.started_at || nowIso(),
@@ -63,9 +96,7 @@ export function toScrapeRun({ mode, status = RUN_STATUS.RUNNING, userId = null, 
     updated_count: stats.updated_count || 0,
     rejected_count: stats.rejected_count || 0,
     error_message: message || null,
-    metadata: {
-      app_mode: stats.app_mode || APP_MODE.SIMULATION
-    }
+    metadata: stats.metadata || {}
   };
 }
 

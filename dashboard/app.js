@@ -1,8 +1,16 @@
 ﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { APP_MODE, BOUNTY_STAGES, LOCAL_TRACKING_CONFIG, SCRAPE_MODES, SUPABASE_CONFIG } from "./config.js";
+import {
+  APP_MODE,
+  BOUNTY_STAGES,
+  LOCAL_TRACKING_CONFIG,
+  SCRAPE_ENGINE_PREFLIGHT,
+  SCRAPE_MODES,
+  SUPABASE_CONFIG
+} from "./config.js";
 import {
   buildWorkPackageFiles,
+  fromBountyCandidate,
   toAgentEvent,
   toBountyCandidate,
   toScrapeRun,
@@ -158,6 +166,7 @@ let appRunMode = APP_MODE.SIMULATION;
 let auditEvents = [];
 let scrapeRunHistory = [];
 let lastEngineError = "";
+let shadowRealSyncInFlight = false;
 let scrapeSchedule = {
   nextFastAt: null,
   nextDeepAt: null,
@@ -200,7 +209,6 @@ const PENDING_SIGNUP_COMMENT_KEY = "bounty_ops_pending_signup_comments";
 const agentGrid = document.getElementById("agent-grid");
 const jobsBody = document.getElementById("jobs-body");
 const filterSelect = document.getElementById("agent-filter");
-const simBtn = document.getElementById("sim-btn");
 const scrapeEngineBtn = document.getElementById("scrape-engine-btn");
 const scrapeFastBtn = document.getElementById("scrape-fast-btn");
 const scrapeDeepBtn = document.getElementById("scrape-deep-btn");
@@ -585,6 +593,8 @@ async function bootstrapAuth() {
     applySignedInState(userData.user);
     await persistAuthUserProfile(userData.user);
     await persistPendingSignupComment(userData.user);
+    await loadRecentAgentEvents();
+    renderAll();
   } catch (error) {
     supabaseClient = null;
     setAccessState(false);
@@ -610,6 +620,8 @@ async function handleSignIn() {
     await persistAuthUserProfile(data?.user);
     await persistPendingSignupComment(data?.user);
     applySignedInState(data?.user || null, email);
+    await loadRecentAgentEvents();
+    renderAll();
   } catch (error) {
     if (isEmailNotConfirmedError(error)) {
       setResendVisible(true, email);
@@ -921,6 +933,152 @@ async function persistScrapeRun(mode, stats) {
   if (error) {
     console.warn("scrape_runs insert failed:", error.message);
   }
+}
+
+function upsertRemoteBountyRecord(incoming) {
+  const incomingKey = incoming.dedupeKey || incoming.id;
+  const index = bountyRecords.findIndex((record) => {
+    return record.dedupeKey === incomingKey || record.id === incoming.id;
+  });
+
+  if (index === -1) {
+    bountyRecords.push(incoming);
+    return "created";
+  }
+
+  const existing = bountyRecords[index];
+  bountyRecords[index] = {
+    ...existing,
+    ...incoming,
+    packageStatus: existing.packageStatus || incoming.packageStatus,
+    supabaseSyncStatus: "synced"
+  };
+  return "updated";
+}
+
+async function loadRecentAgentEvents() {
+  if (!supabaseClient || !currentUserId()) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("agent_events")
+    .select("id,bounty_local_id,agent_id,action,from_stage,to_stage,reason,created_at")
+    .eq("user_id", currentUserId())
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (error) {
+    console.warn("agent_events load failed:", error.message);
+    return;
+  }
+
+  const localEvents = auditEvents.filter((event) => !String(event.id).startsWith("remote-"));
+  const remoteEvents = (data || []).map((event) => ({
+    id: `remote-${event.id}`,
+    bountyLocalId: event.bounty_local_id,
+    title: "",
+    agentId: event.agent_id,
+    action: event.action,
+    fromStage: event.from_stage,
+    toStage: event.to_stage,
+    reason: event.reason || "",
+    createdAt: new Date(event.created_at)
+  }));
+  auditEvents = [...localEvents, ...remoteEvents]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 80);
+}
+
+async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
+  if (shadowRealSyncInFlight) {
+    return;
+  }
+  if (!supabaseClient || !currentUserId()) {
+    scrapeSchedule.lastRunMode = "Shadow Real blocked (sign in first)";
+    renderAll();
+    return;
+  }
+
+  shadowRealSyncInFlight = true;
+  lastEngineError = "";
+  scoutWorkingUntil = Date.now() + 12 * 1000;
+  lastScrapeModeKey = mode;
+  setModeButtonActive(mode);
+  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} sync`;
+  const startedAt = new Date(Date.now() - 1000).toISOString();
+
+  try {
+    const { data, error } = await supabaseClient
+      .from("bounty_candidates")
+      .select(
+        "id,contract_version,local_id,external_id,dedupe_key,title,platform,source_url,bounty_type,stage,payout_usd,deadline_utc,retrieved_at,description,scope_statement,fix_required,scores,red_flags,next_action,confidence,metadata,created_at,updated_at"
+      )
+      .eq("user_id", currentUserId())
+      .order("retrieved_at", { ascending: false })
+      .limit(SCRAPE_ENGINE_PREFLIGHT.MAX_CANDIDATES_PER_PULL);
+
+    if (error) {
+      throw error;
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    for (const row of data || []) {
+      const result = upsertRemoteBountyRecord(fromBountyCandidate(row));
+      if (result === "created") {
+        createdCount += 1;
+      } else {
+        updatedCount += 1;
+      }
+    }
+
+    await loadRecentAgentEvents();
+    pruneBountyRecords();
+    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)}: ${createdCount} new / ${updatedCount} updated`;
+    await persistScrapeRun(mode, {
+      status: "done",
+      source_key: SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      source_count: (data || []).length,
+      created_count: createdCount,
+      updated_count: updatedCount,
+      rejected_count: 0,
+      metadata: {
+        ingestion: "supabase_shadow_pull"
+      }
+    });
+    recordAuditEvent({
+      agentId: "integration",
+      action: "shadow_real_sync",
+      reason: `Loaded ${createdCount} new and ${updatedCount} updated candidates from Supabase`
+    });
+  } catch (error) {
+    lastEngineError = `Shadow Real sync failed: ${error.message}`;
+    scrapeSchedule.lastRunMode = "Shadow Real sync failed";
+    await persistScrapeRun(mode, {
+      status: "failed",
+      source_key: SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      error_message: error.message,
+      metadata: {
+        ingestion: "supabase_shadow_pull"
+      }
+    });
+  } finally {
+    shadowRealSyncInFlight = false;
+    renderAll();
+  }
+}
+
+function runScrapeCycle(mode) {
+  if (appRunMode === APP_MODE.SIMULATION) {
+    runScrapeMode(mode);
+    return;
+  }
+  void loadShadowRealSnapshot(mode);
 }
 
 async function getDirectoryByPath(rootHandle, pathParts) {
@@ -1485,12 +1643,18 @@ function renderControlTower() {
       <div class="health-tile"><span>Review</span><strong>${pendingReview}</strong></div>
       <div class="health-tile"><span>Packages</span><strong>${trackedCount}/${packageCount}</strong></div>
       <div class="health-tile"><span>Sync errors</span><strong>${syncFailed}</strong></div>
-      <div class="health-tile"><span>Engine</span><strong>${scrapeEngineRunning ? "On" : "Off"}</strong></div>
+      <div class="health-tile"><span>Engine</span><strong>${shadowRealSyncInFlight ? "Syncing" : scrapeEngineRunning ? "On" : "Off"}</strong></div>
     `;
   }
 
   if (safetyStatus) {
-    safetyStatus.textContent = lastEngineError || (scrapeEngineRunning ? "Engine running." : "Engine safety ready.");
+    safetyStatus.textContent =
+      lastEngineError ||
+      (shadowRealSyncInFlight
+        ? "Shadow Real syncing from Supabase."
+        : scrapeEngineRunning
+          ? "Engine running."
+          : "Engine safety ready.");
   }
 }
 
@@ -1988,7 +2152,7 @@ function renderTrackFolderConfig() {
 
 function runScrapeMode(mode) {
   if (!simRunning) {
-    scrapeSchedule.lastRunMode = "Scrape blocked (start live sim)";
+    scrapeSchedule.lastRunMode = "Scrape blocked (start engine)";
     return;
   }
   if (!scrapeEngineRunning) {
@@ -2141,7 +2305,7 @@ function processScheduledScrapes(now) {
     if (!check.dueAt || now < check.dueAt) {
       continue;
     }
-    runScrapeMode(check.mode);
+    runScrapeCycle(check.mode);
     scheduleNextForMode(check.mode, now);
   }
 }
@@ -2266,14 +2430,16 @@ function startSimulationTimer() {
 }
 
 function syncLaunchButtonStates() {
-  simBtn.textContent = simRunning ? "Stop Live Sim" : "Start Live Sim";
-  scrapeEngineBtn.textContent = scrapeEngineRunning ? "Stop Scrape Engine" : "Start Scrape Engine";
-  simBtn.classList.toggle("btn-launch-active", simRunning && !scrapeEngineButtonFocused);
-  scrapeEngineBtn.classList.toggle("btn-launch-active", scrapeEngineButtonFocused);
-}
-
-function setSimButtonState() {
-  syncLaunchButtonStates();
+  if (!scrapeEngineBtn) {
+    return;
+  }
+  const isEngineActive = simRunning && scrapeEngineRunning;
+  scrapeEngineBtn.textContent = isEngineActive ? "Stop Engine" : "Start Engine";
+  scrapeEngineBtn.classList.toggle("btn-launch-active", isEngineActive || shadowRealSyncInFlight);
+  scrapeEngineBtn.setAttribute("aria-pressed", isEngineActive ? "true" : "false");
+  scrapeEngineBtn.title = isEngineActive
+    ? "Stop the active engine loop without clearing current data."
+    : `Start the ${statusText(appRunMode)} engine loop.`;
 }
 
 function setScrapeButtonState() {
@@ -2281,28 +2447,49 @@ function setScrapeButtonState() {
 }
 
 function setCadenceButtonsEnabled() {
-  const enabled = simRunning;
+  const enabled = simRunning && scrapeEngineRunning;
   scrapeFastBtn.disabled = !enabled;
   scrapeDeepBtn.disabled = !enabled;
   scrapeFullBtn.disabled = !enabled;
 }
 
+function startEngine(initialMode = SCRAPE_MODES.FAST) {
+  simRunning = true;
+  scrapeEngineRunning = true;
+  scrapeEngineButtonFocused = true;
+  lastEngineError = "";
+  startSimulationTimer();
+  seedScrapeSchedule(Date.now());
+  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} engine started`;
+  runScrapeCycle(initialMode);
+  scheduleNextForMode(initialMode, Date.now());
+  setScrapeButtonState();
+  setCadenceButtonsEnabled();
+  renderAll();
+}
+
+function stopEngine(reason = "Engine stopped") {
+  simRunning = false;
+  scrapeEngineRunning = false;
+  clearScoutWorkState();
+  stopSimulation();
+  lastCycleAt = null;
+  scrapeSchedule.lastRunMode = reason;
+  for (const agent of agents) {
+    agent.mood = "Standby";
+  }
+  setScrapeButtonState();
+  setCadenceButtonsEnabled();
+  renderAll();
+}
+
 function runCadenceClick(mode) {
-  if (!simRunning) {
-    scrapeSchedule.lastRunMode = "Cadence blocked (start live sim first)";
-    renderAll();
+  if (!simRunning || !scrapeEngineRunning) {
+    startEngine(mode);
     return;
   }
 
-  if (!scrapeEngineRunning) {
-    scrapeEngineRunning = true;
-    scrapeEngineButtonFocused = false;
-    seedScrapeSchedule(Date.now());
-    scrapeSchedule.lastRunMode = "Scheduled";
-    setScrapeButtonState();
-  }
-
-  runScrapeMode(mode);
+  runScrapeCycle(mode);
   scheduleNextForMode(mode, Date.now());
   setCadenceButtonsEnabled();
   renderAll();
@@ -2347,26 +2534,12 @@ function clearScoutWorkState() {
 }
 
 function toggleScrapeEngine() {
-  if (!simRunning) {
-    scrapeSchedule.lastRunMode = "Engine blocked (start live sim first)";
-    renderAll();
+  if (simRunning && scrapeEngineRunning) {
+    stopEngine("Stopped");
     return;
   }
 
-  scrapeEngineRunning = !scrapeEngineRunning;
-  scrapeEngineButtonFocused = scrapeEngineRunning;
-  if (scrapeEngineRunning) {
-    seedScrapeSchedule(Date.now());
-    scrapeSchedule.lastRunMode = "Scheduled";
-    runScrapeMode("fast");
-    scheduleNextForMode("fast", Date.now());
-  } else {
-    scrapeSchedule.lastRunMode = "Stopped";
-    clearScoutWorkState();
-  }
-  setScrapeButtonState();
-  setCadenceButtonsEnabled();
-  renderAll();
+  startEngine(SCRAPE_MODES.FAST);
 }
 
 function resetDashboard() {
@@ -2378,7 +2551,6 @@ function resetDashboard() {
   clearStateForSimulation();
   renderFilter();
   renderAll();
-  setSimButtonState();
   setScrapeButtonState();
   setCadenceButtonsEnabled();
   setModeButtonActive(null);
@@ -2412,7 +2584,6 @@ function stopAllEngines(reason = "Kill switch engaged") {
   }
   lastEngineError = reason;
   recordAuditEvent({ action: "kill_switch", reason });
-  setSimButtonState();
   setScrapeButtonState();
   setCadenceButtonsEnabled();
   renderAll();
@@ -2596,27 +2767,6 @@ scrapeFullBtn.addEventListener("click", () => {
   runCadenceClick("full");
 });
 
-simBtn.addEventListener("click", () => {
-  simRunning = !simRunning;
-  if (simRunning) {
-    startSimulationTimer();
-    updateCycle();
-    renderAll();
-  } else {
-    scrapeEngineRunning = false;
-    clearScoutWorkState();
-    stopSimulation();
-    lastCycleAt = null;
-    for (const agent of agents) {
-      agent.mood = "Standby";
-    }
-    setScrapeButtonState();
-    renderAll();
-  }
-  setSimButtonState();
-  setCadenceButtonsEnabled();
-});
-
 funnelAccordion.addEventListener("click", (event) => {
   const row = event.target.closest(".bounty-row");
   if (row) {
@@ -2701,7 +2851,6 @@ window.addEventListener("beforeunload", () => {
 initState();
 renderFilter();
 renderAll();
-setSimButtonState();
 setScrapeButtonState();
 setCadenceButtonsEnabled();
 setModeButtonActive(null);

@@ -33,11 +33,13 @@ The dashboard uses four synchronized views:
 
 ## Interaction
 
-- `Reset`: restores default metrics/jobs and stops live simulation.
-- `Run 1 Cycle`: executes one update tick.
-- `Start Live Sim`: runs recurring updates every ~2.2 seconds.
-- `Start Scrape Engine`: enables Scout scraping scheduler.
+- `Reset`: restores default metrics/jobs and stops the engine loop.
+- `Start Engine`: starts or stops the active engine loop based on the selected Control Tower mode.
 - `Fast Poll`, `Deep Scan`, `Full Refresh`: manual scrape triggers.
+  - disabled until `Start Engine` is active.
+  - in `simulation`, they generate simulated candidates.
+  - in `shadow_real`, they sync candidates from Supabase.
+  - `live_real` remains guarded until the real engine is approved.
 - `Agent Filter`: isolate jobs by owner.
 - `Create Report`: generates a funnel report from the current funnel dataset.
 - `Download Excel Report`: saves a `.xlsx` report.
@@ -48,8 +50,8 @@ The dashboard uses four synchronized views:
 
 ## Runtime Behavior
 
-- While live sim is running, agents keep working continuously, including when the window is minimized.
-- Agents stop only when live sim is stopped, dashboard is reset, or the dashboard window is closed.
+- While the engine is running, agents keep working continuously, including when the window is minimized.
+- Agents stop only when the engine is stopped, dashboard is reset, Kill Switch is used, or the dashboard window is closed.
 - If browser throttling delays background ticks, scheduler catch-up runs when timing resumes.
 - Scout schedule:
   - Fast Poll every 5-15 minutes.
@@ -77,10 +79,21 @@ The dashboard uses four synchronized views:
 ## Control Tower Readiness
 
 - `Control Tower` exposes the operating mode: `simulation`, `shadow_real`, or `live_real`.
+- Changing mode arms behavior only; it does not run a scrape by itself.
+- `Start Engine` is the single launch/stop control for the selected mode.
+- In `shadow_real`, cadence buttons pull real candidate rows from Supabase instead of creating simulated candidates.
 - `Health` summarizes last run counts, review queue size, package coverage, sync errors, and engine state.
 - `Candidate Review Queue` supports reject, monitor, evaluate, and package actions before work moves downstream.
 - `Work Package Center` shows local folder status, Supabase sync status, artifact count, last event, and next action.
 - `Audit Trail` records operator and agent events in-session so scrape engine behavior can be inspected before live automation.
+
+## Scrape Engine Preflight
+
+- `../scrape-engine/` contains the safe runner scaffold for real adapters.
+- Default mode is `shadow_real` and `SCRAPE_DRY_RUN=true`.
+- Real writes require server-side `SUPABASE_SERVICE_ROLE_KEY` plus `SUPABASE_TARGET_USER_ID`.
+- `live_real` is blocked until `ALLOW_LIVE_REAL=true`.
+- Source health/rate-limit/circuit state is stored in `public.scrape_source_state`.
 
 ## Local Run
 

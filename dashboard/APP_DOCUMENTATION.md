@@ -114,7 +114,11 @@ Implemented controls:
 - `Simulation`: current simulated pipeline.
 - `Shadow Real`: intended for real scrape ingestion without automatic downstream movement.
 - `Live Real`: intended for future live automation after shadow mode is proven.
-- `Kill Switch`: stops live sim and scrape engine state immediately.
+- Header `Start Engine`: the single launch/stop control for whichever mode is selected.
+- Header cadence buttons: manual run triggers that are enabled only while the engine is active.
+- `Kill Switch`: stops the active engine loop and scrape engine state immediately.
+
+Changing modes arms behavior only. It does not run a scrape by itself.
 
 Health tiles show:
 
@@ -341,6 +345,13 @@ Expected behavior for the next phase:
 - Candidates appear in the review queue.
 - No automatic downstream execution happens without operator approval.
 
+Implemented preflight behavior:
+
+- `shadow_real` reads candidate rows from Supabase instead of generating simulated rows.
+- The candidate review queue remains the manual gate before evaluation/package work.
+- Scrape source health, rate-limit, and circuit-breaker state is stored in `public.scrape_source_state`.
+- The local `scrape-engine/` runner is dry-run by default and blocks `live_real` unless explicitly approved.
+
 ### Live Real
 
 Prepared as a future mode.
@@ -377,6 +388,9 @@ This should only be used after Shadow Real has proven:
 - Audit Trail.
 - Supabase workflow schema.
 - RLS and Storage bucket.
+- Shadow Real Supabase ingestion.
+- Scrape engine dry-run/preflight runner.
+- Source health/circuit-breaker table.
 - Production Vercel deployment.
 
 ## What Is Not Connected Yet
@@ -390,7 +404,6 @@ Still pending:
 - Real source capture.
 - Deduplication against real external IDs.
 - Rate limit/backoff/circuit breaker runtime.
-- Shadow Real ingestion from Supabase into the UI.
 - Supabase Storage uploads for heavy artifacts.
 - Persistent audit replay from Supabase on page reload.
 

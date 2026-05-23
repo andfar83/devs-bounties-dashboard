@@ -30,6 +30,8 @@ create table if not exists public.scrape_runs (
   id bigint generated always as identity primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
   contract_version text not null,
+  source_key text,
+  app_mode text not null default 'simulation' check (app_mode in ('simulation', 'shadow_real', 'live_real')),
   mode text not null check (mode in ('fast', 'deep', 'full')),
   status text not null check (status in ('queued', 'running', 'done', 'retry', 'failed')),
   started_at timestamptz not null default now(),
@@ -103,10 +105,53 @@ create table if not exists public.submission_logs (
 
 create index if not exists bounty_candidates_user_stage_idx on public.bounty_candidates (user_id, stage);
 create index if not exists bounty_candidates_deadline_idx on public.bounty_candidates (deadline_utc);
+create index if not exists bounty_candidates_user_platform_external_idx
+on public.bounty_candidates (user_id, platform, external_id)
+where external_id is not null;
+create index if not exists bounty_candidates_user_source_url_idx
+on public.bounty_candidates (user_id, source_url)
+where source_url is not null;
 create index if not exists scrape_runs_user_started_idx on public.scrape_runs (user_id, started_at desc);
+create index if not exists scrape_runs_user_app_mode_idx on public.scrape_runs (user_id, app_mode, started_at desc);
 create index if not exists agent_events_bounty_idx on public.agent_events (user_id, bounty_local_id, created_at desc);
 create index if not exists work_packages_user_bounty_idx on public.work_packages (user_id, bounty_local_id);
 create index if not exists work_artifacts_user_bounty_idx on public.work_artifacts (user_id, bounty_local_id);
+
+alter table public.scrape_runs
+add column if not exists source_key text,
+add column if not exists app_mode text not null default 'simulation';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'scrape_runs_app_mode_check'
+      and conrelid = 'public.scrape_runs'::regclass
+  ) then
+    alter table public.scrape_runs
+    add constraint scrape_runs_app_mode_check
+    check (app_mode in ('simulation', 'shadow_real', 'live_real'));
+  end if;
+end;
+$$;
+
+create table if not exists public.scrape_source_state (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  source_key text not null,
+  status text not null default 'enabled' check (status in ('enabled', 'paused', 'rate_limited', 'circuit_open')),
+  last_success_at timestamptz,
+  last_error_at timestamptz,
+  next_allowed_at timestamptz,
+  consecutive_errors integer not null default 0 check (consecutive_errors >= 0),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, source_key)
+);
+
+create index if not exists scrape_source_state_next_allowed_idx
+on public.scrape_source_state (user_id, status, next_allowed_at);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -136,12 +181,18 @@ create trigger submission_logs_set_updated_at
 before update on public.submission_logs
 for each row execute function public.set_updated_at();
 
+drop trigger if exists scrape_source_state_set_updated_at on public.scrape_source_state;
+create trigger scrape_source_state_set_updated_at
+before update on public.scrape_source_state
+for each row execute function public.set_updated_at();
+
 alter table public.bounty_candidates enable row level security;
 alter table public.scrape_runs enable row level security;
 alter table public.agent_events enable row level security;
 alter table public.work_packages enable row level security;
 alter table public.work_artifacts enable row level security;
 alter table public.submission_logs enable row level security;
+alter table public.scrape_source_state enable row level security;
 
 grant usage on schema public to authenticated;
 revoke all on public.bounty_candidates from authenticated;
@@ -150,12 +201,14 @@ revoke all on public.agent_events from authenticated;
 revoke all on public.work_packages from authenticated;
 revoke all on public.work_artifacts from authenticated;
 revoke all on public.submission_logs from authenticated;
+revoke all on public.scrape_source_state from authenticated;
 grant select, insert, update on public.bounty_candidates to authenticated;
 grant select, insert, update on public.scrape_runs to authenticated;
 grant select, insert on public.agent_events to authenticated;
 grant select, insert, update on public.work_packages to authenticated;
 grant select, insert, update on public.work_artifacts to authenticated;
 grant select, insert, update on public.submission_logs to authenticated;
+grant select, insert, update on public.scrape_source_state to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
 drop policy if exists "bounty_candidates_select_own" on public.bounty_candidates;
@@ -224,6 +277,18 @@ for insert to authenticated with check ((select auth.uid()) = user_id);
 
 drop policy if exists "submission_logs_update_own" on public.submission_logs;
 create policy "submission_logs_update_own" on public.submission_logs
+for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+
+drop policy if exists "scrape_source_state_select_own" on public.scrape_source_state;
+create policy "scrape_source_state_select_own" on public.scrape_source_state
+for select to authenticated using ((select auth.uid()) = user_id);
+
+drop policy if exists "scrape_source_state_insert_own" on public.scrape_source_state;
+create policy "scrape_source_state_insert_own" on public.scrape_source_state
+for insert to authenticated with check ((select auth.uid()) = user_id);
+
+drop policy if exists "scrape_source_state_update_own" on public.scrape_source_state;
+create policy "scrape_source_state_update_own" on public.scrape_source_state
 for update to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 insert into storage.buckets (id, name, public)
