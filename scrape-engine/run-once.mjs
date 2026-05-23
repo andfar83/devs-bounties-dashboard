@@ -89,8 +89,9 @@ function assertSourceAllowed(sourceState, { maxConsecutiveErrors }) {
   }
 }
 
-async function updateSourceState({ userId, sourceKey, status, errorMessage = "" }) {
+async function updateSourceState({ userId, sourceKey, status, errorMessage = "", previousState = null }) {
   const isError = Boolean(errorMessage);
+  const consecutiveErrors = isError ? Number(previousState?.consecutive_errors || 0) + 1 : 0;
   const nextAllowedAt = isError ? new Date(Date.now() + Number(env("SCRAPE_CIRCUIT_COOLDOWN_MINUTES", "30")) * 60000).toISOString() : null;
   await rest("scrape_source_state?on_conflict=user_id,source_key", {
     method: "POST",
@@ -99,10 +100,10 @@ async function updateSourceState({ userId, sourceKey, status, errorMessage = "" 
       user_id: userId,
       source_key: sourceKey,
       status,
-      last_success_at: isError ? null : new Date().toISOString(),
+      last_success_at: isError ? previousState?.last_success_at || null : new Date().toISOString(),
       last_error_at: isError ? new Date().toISOString() : null,
       next_allowed_at: nextAllowedAt,
-      consecutive_errors: isError ? 1 : 0,
+      consecutive_errors: consecutiveErrors,
       metadata: {
         last_error: errorMessage || null
       }
@@ -129,8 +130,9 @@ async function main() {
     throw new Error("live_real is blocked until ALLOW_LIVE_REAL=true is set explicitly.");
   }
 
+  let sourceState = null;
   if (!dryRun) {
-    const sourceState = await getSourceState({ userId, sourceKey });
+    sourceState = await getSourceState({ userId, sourceKey });
     assertSourceAllowed(sourceState, { maxConsecutiveErrors });
   }
 
@@ -183,10 +185,10 @@ async function main() {
         })
       )
     });
-    await updateSourceState({ userId, sourceKey, status: "enabled" });
+    await updateSourceState({ userId, sourceKey, status: "enabled", previousState: sourceState });
     console.log(JSON.stringify({ ok: true, dryRun, appMode, sourceKey, inserted: candidates.length }, null, 2));
   } catch (error) {
-    await updateSourceState({ userId, sourceKey, status: "circuit_open", errorMessage: error.message });
+    await updateSourceState({ userId, sourceKey, status: "circuit_open", errorMessage: error.message, previousState: sourceState });
     throw error;
   }
 }

@@ -82,8 +82,10 @@ The dashboard uses four synchronized views:
 
 - `Control Tower` exposes the operating mode: `simulation`, `shadow_real`, or `live_real`.
 - Changing mode arms behavior only; it does not run a scrape by itself.
+- Mode changes are blocked while the engine is running; stop the engine first.
 - `Start Engine` is the single launch/stop control for the selected mode.
 - `Project Archive` must be connected before Shadow/Live engines start.
+- Only the selected cadence is scheduled while the engine is running.
 - In `shadow_real`, cadence buttons pull real candidate rows from Supabase instead of creating simulated candidates.
 - `Health` summarizes last run counts, review queue size, package coverage, sync errors, and engine state.
 - `Candidate Review Queue` supports reject, monitor, evaluate, and package actions before work moves downstream.

@@ -263,7 +263,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  padding: 0.34rem 0.58rem 0.34rem 0.34rem;
+  padding: 0.34rem 1.58rem 0.34rem 0.34rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(10, 23, 35, 0.66);
@@ -786,6 +786,9 @@ h1 {
   align-items: center;
   gap: 0.55rem;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 11rem;
 }
 
 .agent-name {
@@ -845,12 +848,13 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  min-width: 4.7rem;
+  min-width: 0;
   justify-content: flex-end;
   color: #dff6ff;
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.68rem;
   perspective: 140px;
+  max-width: 100%;
 }
 
 .spinner {
@@ -903,6 +907,39 @@ h1 {
 .agent-work-time {
   min-width: 2.3rem;
   color: #c6dbea;
+}
+
+.agent-work-meta {
+  display: grid;
+  gap: 0.13rem;
+  justify-items: end;
+  min-width: 0;
+  line-height: 1;
+}
+
+.agent-work-bounty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  max-width: 7.8rem;
+  padding: 0.14rem 0.38rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.18));
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 56%),
+    rgba(6, 18, 28, 0.76);
+  color: #b9cad9;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 16%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-work-bounty strong {
+  color: #f4fbff;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @keyframes spinner {

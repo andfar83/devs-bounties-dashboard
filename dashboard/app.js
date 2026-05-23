@@ -1210,10 +1210,8 @@ function scheduleNextFull(baseTime = Date.now()) {
   scrapeSchedule.nextFullAt = baseTime + randomMs(FULL_REFRESH_MIN_MS, FULL_REFRESH_MAX_MS);
 }
 
-function seedScrapeSchedule(baseTime = Date.now()) {
-  scheduleNextFast(baseTime);
-  scheduleNextDeep(baseTime);
-  scheduleNextFull(baseTime);
+function resetScrapeSchedule(lastRunMode = "none") {
+  scrapeSchedule = { nextFastAt: null, nextDeepAt: null, nextFullAt: null, lastRunMode };
 }
 
 const scheduleNextByMode = {
@@ -1326,7 +1324,7 @@ function clearStateForSimulation() {
   auditEvents = [];
   scrapeRunHistory = [];
   lastEngineError = "";
-  scrapeSchedule = { nextFastAt: null, nextDeepAt: null, nextFullAt: null, lastRunMode: "none" };
+  resetScrapeSchedule();
   renderBountyDisclosure(null);
   renderEmptyReport();
   renderSolvedBounties();
@@ -1389,7 +1387,66 @@ function formatAgentWorkTime(startedAt) {
   return `${minutes}:${seconds}`;
 }
 
-function agentLoaderMarkup(agentId, isWorking) {
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    return {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+      "'": "&#039;"
+    }[char];
+  });
+}
+
+function safeRecordTime(value, fallback = 0) {
+  const time = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(time) ? time : fallback;
+}
+
+function compareActiveBounties(a, b) {
+  const dueA = safeRecordTime(a?.dueDate ? `${a.dueDate}T23:59:59Z` : "", Number.MAX_SAFE_INTEGER);
+  const dueB = safeRecordTime(b?.dueDate ? `${b.dueDate}T23:59:59Z` : "", Number.MAX_SAFE_INTEGER);
+
+  if (dueA !== dueB) {
+    return dueA - dueB;
+  }
+
+  return safeRecordTime(b?.retrievedAt) - safeRecordTime(a?.retrievedAt);
+}
+
+function getActiveBountyForAgent(agentId) {
+  const stageByAgent = {
+    scout: BOUNTY_STAGES.DISCOVERED,
+    feasibility: BOUNTY_STAGES.SHORTLISTED,
+    builder: BOUNTY_STAGES.SUBMITTED,
+    ops: BOUNTY_STAGES.WON
+  };
+  const stage = stageByAgent[agentId];
+
+  if (!stage) {
+    return null;
+  }
+
+  const candidates = bountyRecords
+    .filter((record) => {
+      if (record.stage !== stage) {
+        return false;
+      }
+      if (record.nextAction === "discard") {
+        return false;
+      }
+      if (agentId === "ops" && record.stage === BOUNTY_STAGES.PAID) {
+        return false;
+      }
+      return true;
+    })
+    .sort(compareActiveBounties);
+
+  return candidates[0] || null;
+}
+
+function agentLoaderMarkup(agentId, isWorking, activeBounty) {
   if (!isWorking) {
     agentWorkStartedAt.delete(agentId);
     return "";
@@ -1399,8 +1456,10 @@ function agentLoaderMarkup(agentId, isWorking) {
     agentWorkStartedAt.set(agentId, Date.now());
   }
 
+  const bountyId = activeBounty?.id ? escapeHtml(activeBounty.id) : "--";
+
   return `
-    <div class="agent-work-indicator" aria-label="Agent working">
+    <div class="agent-work-indicator" aria-label="Agent working on bounty ${bountyId}">
       <div class="spinner" aria-hidden="true">
         <div></div>
         <div></div>
@@ -1409,7 +1468,13 @@ function agentLoaderMarkup(agentId, isWorking) {
         <div></div>
         <div></div>
       </div>
-      <span class="agent-work-time">${formatAgentWorkTime(agentWorkStartedAt.get(agentId))}</span>
+      <span class="agent-work-meta">
+        <span class="agent-work-time">${formatAgentWorkTime(agentWorkStartedAt.get(agentId))}</span>
+        <span class="agent-work-bounty" title="Active bounty ${bountyId}">
+          <span>ID</span>
+          <strong>${bountyId}</strong>
+        </span>
+      </span>
     </div>
   `;
 }
@@ -1443,6 +1508,7 @@ function renderAgents() {
     const isWorking = runtime.label === "Working";
     const functionMarkup = agent.functions.map((item) => `<li>${item}</li>`).join("");
     const stats = getAgentStats(agent.id);
+    const activeBounty = getActiveBountyForAgent(agent.id);
     const card = document.createElement("article");
     card.className = "agent-card";
     card.tabIndex = 0;
@@ -1454,7 +1520,7 @@ function renderAgents() {
           <p class="agent-role">${agent.role}</p>
         </div>
         <div class="agent-head-tools">
-          ${agentLoaderMarkup(agent.id, isWorking)}
+          ${agentLoaderMarkup(agent.id, isWorking, activeBounty)}
           <span class="pill">${agent.mood}</span>
         </div>
       </div>
@@ -2489,7 +2555,7 @@ function startEngine() {
   scrapeEngineButtonFocused = true;
   lastEngineError = "";
   startSimulationTimer();
-  seedScrapeSchedule(Date.now());
+  resetScrapeSchedule(`${normalizeModeLabel(appRunMode)} engine started`);
   scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} engine started (${normalizeModeLabel(selectedCadenceMode)})`;
   runScrapeCycle(selectedCadenceMode);
   scheduleNextForMode(selectedCadenceMode, Date.now());
@@ -2588,6 +2654,14 @@ function applyEngineMode(mode) {
   if (!Object.values(APP_MODE).includes(mode)) {
     return;
   }
+
+  if (simRunning && scrapeEngineRunning) {
+    lastEngineError = "Stop Engine before changing engine mode.";
+    scrapeSchedule.lastRunMode = "Mode change blocked (engine running)";
+    renderAll();
+    return;
+  }
+
   appRunMode = mode;
   recordAuditEvent({
     action: "mode_changed",

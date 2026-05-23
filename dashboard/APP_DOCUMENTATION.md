@@ -120,8 +120,10 @@ Implemented controls:
 - `Kill Switch`: stops the active engine loop and scrape engine state immediately.
 
 Changing modes arms behavior only. It does not run a scrape by itself.
+Mode changes are blocked while the engine is running.
 Shadow Real and Live Real require a connected project archive before the engine starts.
 The engine also requires an explicit cadence selection before it starts.
+Once started, only the selected cadence is scheduled.
 
 Health tiles show:
 
