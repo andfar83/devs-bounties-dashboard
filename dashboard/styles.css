@@ -354,7 +354,7 @@ h1 {
 }
 
 .btn-secondary {
-  background: #00ff473d;
+  background: #00ff4818;
   color: lime;
 }
 
@@ -570,7 +570,7 @@ h1 {
 .control-actions {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) minmax(120px, 160px) minmax(0, 1fr);
   gap: 0.8rem;
   align-items: center;
   min-height: 68px;
@@ -582,6 +582,9 @@ h1 {
 }
 
 .control-archive {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
@@ -601,7 +604,7 @@ h1 {
   justify-content: space-between;
   gap: 0.75rem;
   align-items: center;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0;
 }
 
 .control-block-head .control-label {
@@ -1188,7 +1191,9 @@ h1 {
 }
 
 .btn-report {
-  padding: 0.45rem 0.75rem;
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0.5rem 0.85rem;
   font-size: 0.8rem;
 }
 
@@ -1208,7 +1213,7 @@ h1 {
 
 #track-status {
   display: block;
-  margin: 0.35rem 0 0.8rem;
+  margin: 0.15rem 0 0;
 }
 
 .track-folder-card {
@@ -1313,7 +1318,7 @@ h1 {
 }
 
 .track-folder-help {
-  margin: 0.5rem 0 0;
+  margin: 0;
   color: #a5c0d6;
   font-size: 0.82rem;
 }
