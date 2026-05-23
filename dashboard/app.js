@@ -2113,8 +2113,8 @@ function applyReportWorkbookLayout(sheet, reportData) {
     font: { name: "Aptos", sz: 10, italic: true, color: rgb("B9D8E8") },
     alignment: { horizontal: "left", vertical: "center", wrapText: true }
   });
-  styleRange(3, 3, 1, lastCol, { fill: { fgColor: rgb(palette.pale) }, border: {} });
-  styleRange(13, 13, 1, lastCol, { fill: { fgColor: rgb(palette.pale) }, border: {} });
+  styleRange(3, 3, 1, lastCol, { fill: { fgColor: rgb(palette.white) } });
+  styleRange(13, 13, 1, lastCol, { fill: { fgColor: rgb(palette.white) } });
 
   styleRange(4, 4, 1, 3, headerStyle);
   styleRange(4, 4, 5, 9, headerStyle);
@@ -2136,9 +2136,12 @@ function applyReportWorkbookLayout(sheet, reportData) {
     applyStyle(rowNumber, 1, { fill: { fgColor: rgb(kpiFills[rowNumber]) }, font: { bold: true } });
     applyStyle(rowNumber, 2, {
       fill: { fgColor: rgb(kpiFills[rowNumber]) },
-      alignment: { horizontal: "right", vertical: "center", wrapText: true }
+      alignment: { horizontal: "center", vertical: "center", wrapText: true }
     });
-    applyStyle(rowNumber, 3, { font: { sz: 9, color: rgb(palette.muted) } });
+    applyStyle(rowNumber, 3, {
+      font: { sz: 9, color: rgb(palette.muted) },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true }
+    });
   }
 
   styleRange(5, 8, 5, 9, {
@@ -2147,12 +2150,12 @@ function applyReportWorkbookLayout(sheet, reportData) {
   });
   styleRange(10, 12, 5, 6, {
     fill: { fgColor: rgb("F9FCF6") },
-    alignment: { horizontal: "left", vertical: "center", wrapText: true },
+    alignment: { horizontal: "left", vertical: "top", wrapText: true },
     font: { sz: 9 }
   });
   styleRange(10, 12, 8, 9, {
     fill: { fgColor: rgb(palette.pale) },
-    alignment: { horizontal: "left", vertical: "center", wrapText: true },
+    alignment: { horizontal: "left", vertical: "top", wrapText: true },
     font: { sz: 9 }
   });
 
@@ -2170,12 +2173,12 @@ function applyReportWorkbookLayout(sheet, reportData) {
     const rowFill = rowNumber % 2 ? palette.white : "F7FBFD";
     styleRange(rowNumber, rowNumber, 1, lastCol, {
       fill: { fgColor: rgb(rowFill) },
-      alignment: { vertical: "top", wrapText: true }
+      alignment: { vertical: "center", wrapText: true }
     });
     const priceCell = sheet[`E${rowNumber}`];
     if (priceCell) {
       priceCell.z = "$#,##0";
-      priceCell.s = mergeStyle(priceCell.s, { alignment: { horizontal: "right", vertical: "top" } });
+      priceCell.s = mergeStyle(priceCell.s, { alignment: { horizontal: "center", vertical: "center", wrapText: true } });
     }
 
     const stageValue = String(sheet[`F${rowNumber}`]?.v || "").toLowerCase();
@@ -2190,7 +2193,7 @@ function applyReportWorkbookLayout(sheet, reportData) {
       applyStyle(rowNumber, 6, {
         fill: { fgColor: rgb(stageFill) },
         font: { bold: true },
-        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+        alignment: { horizontal: "center", vertical: "center", wrapText: true }
       });
     }
 
@@ -2199,10 +2202,10 @@ function applyReportWorkbookLayout(sheet, reportData) {
       applyStyle(rowNumber, 7, {
         fill: { fgColor: rgb(palette.lime) },
         font: { bold: true, color: rgb("245A12") },
-        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+        alignment: { horizontal: "center", vertical: "center", wrapText: true }
       });
     } else {
-      applyStyle(rowNumber, 7, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+      applyStyle(rowNumber, 7, { alignment: { horizontal: "center", vertical: "center", wrapText: true } });
     }
 
     const overdueValue = String(sheet[`H${rowNumber}`]?.v || "").toLowerCase();
@@ -2210,18 +2213,18 @@ function applyReportWorkbookLayout(sheet, reportData) {
       applyStyle(rowNumber, 8, {
         fill: { fgColor: rgb(palette.red) },
         font: { bold: true, color: rgb("9C1E1E") },
-        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+        alignment: { horizontal: "center", vertical: "center", wrapText: true }
       });
     } else {
       applyStyle(rowNumber, 8, {
         fill: { fgColor: rgb("EEF8F0") },
-        alignment: { horizontal: "center", vertical: "top", wrapText: true }
+        alignment: { horizontal: "center", vertical: "center", wrapText: true }
       });
     }
 
     applyStyle(rowNumber, 3, { font: { color: rgb("0563C1"), underline: true } });
-    applyStyle(rowNumber, 6, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
-    applyStyle(rowNumber, 9, { alignment: { horizontal: "center", vertical: "top", wrapText: true } });
+    applyStyle(rowNumber, 6, { alignment: { horizontal: "center", vertical: "center", wrapText: true } });
+    applyStyle(rowNumber, 9, { alignment: { horizontal: "center", vertical: "center", wrapText: true } });
   }
 
   for (let rowNumber = 15; rowNumber <= lastRow; rowNumber += 1) {
