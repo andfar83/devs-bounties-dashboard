@@ -115,14 +115,29 @@
       <main class="layout">
         <section class="panel panel-agents">
           <div class="panel-title-row">
-            <h2>Agents</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 8V4H8" />
+                <rect x="4" y="8" width="16" height="12" rx="3" />
+                <path d="M2 14h2M20 14h2M9 13h.01M15 13h.01M9 17h6" />
+              </svg>
+              Agents
+            </h2>
             <span id="last-update" class="meta">Last update: --</span>
           </div>
           <div id="agent-grid" class="agent-grid"></div>
         </section>
 
         <section class="panel panel-flow">
-          <h2>Flow View</h2>
+          <h2>
+            <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="5" r="2" />
+              <circle cx="18" cy="19" r="2" />
+              <path d="M6 7v4a4 4 0 0 0 4 4h4" />
+              <path d="M14 11h4a4 4 0 0 1 4 4v2" />
+            </svg>
+            Flow View
+          </h2>
           <div id="flow-track" class="flow-track">
             <div class="flow-step step-scout">
               <p class="flow-label">Scout</p>
@@ -155,7 +170,17 @@
 
         <section class="panel panel-control">
           <div class="panel-title-row">
-            <h2>Control Tower</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.9 19.1a10 10 0 0 1 0-14.2" />
+                <path d="M7.8 16.2a6 6 0 0 1 0-8.4" />
+                <circle cx="12" cy="12" r="2" />
+                <path d="M16.2 7.8a6 6 0 0 1 0 8.4" />
+                <path d="M19.1 4.9a10 10 0 0 1 0 14.2" />
+                <path d="M12 14v7" />
+              </svg>
+              Control Tower
+            </h2>
             <span id="control-mode-meta" class="meta">Mode: simulation</span>
           </div>
           <div class="control-grid">
@@ -180,7 +205,14 @@
 
         <section class="panel panel-review">
           <div class="panel-title-row">
-            <h2>Candidate Review Queue</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="2" width="8" height="4" rx="1" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <path d="m9 14 2 2 4-5" />
+              </svg>
+              Candidate Review Queue
+            </h2>
             <span id="review-meta" class="meta">No pending candidates.</span>
           </div>
           <div id="review-queue" class="review-queue"></div>
@@ -188,7 +220,13 @@
 
         <section class="panel panel-packages">
           <div class="panel-title-row">
-            <h2>Work Package Center</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                <path d="M8 12h8M8 16h5" />
+              </svg>
+              Work Package Center
+            </h2>
             <span id="package-meta" class="meta">No packages yet.</span>
           </div>
           <div class="table-wrap">
@@ -211,7 +249,12 @@
 
         <section class="panel panel-audit">
           <div class="panel-title-row">
-            <h2>Audit Trail</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 12h4l3 8 4-16 3 8h4" />
+              </svg>
+              Audit Trail
+            </h2>
             <span id="audit-meta" class="meta">No events yet.</span>
           </div>
           <div id="audit-list" class="audit-list"></div>
@@ -219,14 +262,25 @@
 
         <section class="panel panel-funnel">
           <div class="panel-title-row">
-            <h2>Funding Funnel</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 4h18l-7 8v6l-4 2v-8Z" />
+              </svg>
+              Funding Funnel
+            </h2>
             <div class="controls">
               <button id="connect-track-btn" class="btn btn-secondary btn-report">Connect Track Folder</button>
               <button id="create-report-btn" class="btn btn-secondary btn-report">Create Report</button>
             </div>
           </div>
           <div class="track-folder-card">
-            <p class="track-folder-label">Project archive root</p>
+            <div class="track-folder-head">
+              <p class="track-folder-label">Project archive root</p>
+              <span id="track-connection-pill" class="track-connection-pill" aria-live="polite">
+                <span class="track-connection-dot" aria-hidden="true"></span>
+                <span id="track-connection-label">Disconnected</span>
+              </span>
+            </div>
             <code id="track-folder-path" class="track-folder-path">C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES</code>
             <p class="track-folder-help">
               Select this folder when connecting tracking. Every challenge is saved as
@@ -249,7 +303,14 @@
 
         <section class="panel panel-jobs">
           <div class="panel-title-row">
-            <h2>Active Jobs</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1" />
+                <rect x="3" y="6" width="18" height="14" rx="2" />
+                <path d="M3 12h18" />
+              </svg>
+              Active Jobs
+            </h2>
             <select id="agent-filter" class="filter">
               <option value="all">All Agents</option>
             </select>
@@ -272,7 +333,16 @@
 
         <section class="panel panel-jobs">
           <div class="panel-title-row">
-            <h2>Solved Bounties</h2>
+            <h2>
+              <svg class="title-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 21h8" />
+                <path d="M12 17v4" />
+                <path d="M7 4h10v5a5 5 0 0 1-10 0Z" />
+                <path d="M5 5H3a2 2 0 0 0 2 4h2" />
+                <path d="M19 5h2a2 2 0 0 1-2 4h-2" />
+              </svg>
+              Solved Bounties
+            </h2>
             <span id="solved-meta" class="meta">No solved bounties yet.</span>
           </div>
           <div class="table-wrap">

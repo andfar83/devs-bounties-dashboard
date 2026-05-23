@@ -218,7 +218,9 @@ const downloadReportBtn = document.getElementById("download-report-btn");
 const reportSaveStatus = document.getElementById("report-save-status");
 const connectTrackBtn = document.getElementById("connect-track-btn");
 const trackStatus = document.getElementById("track-status");
+const trackFolderCard = document.querySelector(".track-folder-card");
 const trackFolderPath = document.getElementById("track-folder-path");
+const trackConnectionLabel = document.getElementById("track-connection-label");
 const packagePrefixLabel = document.getElementById("package-prefix-label");
 const bountyDisclosure = document.getElementById("bounty-disclosure");
 const solvedBody = document.getElementById("solved-body");
@@ -1944,9 +1946,11 @@ async function connectTrackFolder() {
   try {
     if (!("showDirectoryPicker" in window)) {
       trackStatus.textContent = "Folder API unavailable in this browser.";
+      setTrackConnectionState(false);
       return;
     }
     trackDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    setTrackConnectionState(true);
     trackStatus.textContent = `Tracking folder connected: ${trackDirHandle.name}. Packages save as ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>.`;
     for (const record of bountyRecords.filter((item) => stageRank[item.stage] >= stageRank.shortlisted)) {
       await writeWorkPackage(record, "Prepared active bounty package");
@@ -1955,7 +1959,17 @@ async function connectTrackFolder() {
       await archiveSolvedBounty(row.snapshot);
     }
   } catch (error) {
+    setTrackConnectionState(false);
     trackStatus.textContent = "Tracking folder connection canceled.";
+  }
+}
+
+function setTrackConnectionState(isConnected) {
+  if (trackFolderCard) {
+    trackFolderCard.classList.toggle("is-connected", isConnected);
+  }
+  if (trackConnectionLabel) {
+    trackConnectionLabel.textContent = isConnected ? "Connected" : "Disconnected";
   }
 }
 
@@ -1969,6 +1983,7 @@ function renderTrackFolderConfig() {
   if (trackStatus && !trackDirHandle) {
     trackStatus.textContent = `Tracking folder not connected. Select ${LOCAL_TRACKING_CONFIG.RECOMMENDED_ROOT}.`;
   }
+  setTrackConnectionState(Boolean(trackDirHandle));
 }
 
 function runScrapeMode(mode) {
