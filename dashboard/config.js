@@ -53,7 +53,7 @@ export const STORAGE_BUCKETS = {
 };
 
 export const LOCAL_TRACKING_CONFIG = {
-  RECOMMENDED_ROOT: "C:\\Users\\andre\\APPS\\AA-STUDIO\\BOUNTY_WORK_PACKAGES",
+  ARCHIVE_LABEL: "Local project archive",
   PACKAGE_PREFIX: "bounty-"
 };
 

@@ -462,7 +462,7 @@ h1 {
   align-items: center;
   gap: 0.48rem;
   margin: 0 0 0.9rem;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
 }
 
 .panel-title-row {
@@ -474,6 +474,22 @@ h1 {
 
 .panel-title-row h2 {
   margin-bottom: 8px;
+}
+
+.panel-funnel .panel-title-row {
+  align-items: flex-start;
+  gap: 1.25rem;
+  margin-bottom: 1.15rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+}
+
+.panel-funnel .controls {
+  padding: 0.35rem 0 0.25rem 1.25rem;
+}
+
+.panel-funnel #create-report-btn {
+  margin: 0.25rem 0.25rem 0.45rem;
 }
 
 .title-icon {
@@ -1632,5 +1648,15 @@ th {
 
   .agent-grid {
     grid-template-columns: 1fr;
+  }
+
+  .panel-funnel .panel-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .panel-funnel .controls {
+    justify-content: flex-start;
+    padding-left: 0;
   }
 }

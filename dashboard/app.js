@@ -2449,7 +2449,10 @@ async function connectTrackFolder() {
     }
     trackDirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
     setTrackConnectionState(true);
-    trackStatus.textContent = `Tracking folder connected: ${trackDirHandle.name}. Packages save as ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>.`;
+    if (trackFolderPath) {
+      trackFolderPath.textContent = trackDirHandle.name || LOCAL_TRACKING_CONFIG.ARCHIVE_LABEL;
+    }
+    trackStatus.textContent = `Tracking folder connected. Packages save as ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>.`;
     for (const record of bountyRecords.filter((item) => stageRank[item.stage] >= stageRank.shortlisted)) {
       await writeWorkPackage(record, "Prepared active bounty package");
     }
@@ -2473,13 +2476,13 @@ function setTrackConnectionState(isConnected) {
 
 function renderTrackFolderConfig() {
   if (trackFolderPath) {
-    trackFolderPath.textContent = LOCAL_TRACKING_CONFIG.RECOMMENDED_ROOT;
+    trackFolderPath.textContent = trackDirHandle?.name || LOCAL_TRACKING_CONFIG.ARCHIVE_LABEL;
   }
   if (packagePrefixLabel) {
     packagePrefixLabel.textContent = `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}<id>`;
   }
   if (trackStatus && !trackDirHandle) {
-    trackStatus.textContent = `Tracking folder not connected. Select ${LOCAL_TRACKING_CONFIG.RECOMMENDED_ROOT}.`;
+    trackStatus.textContent = "Tracking folder not connected. Select a private local archive folder.";
   }
   setTrackConnectionState(Boolean(trackDirHandle));
 }

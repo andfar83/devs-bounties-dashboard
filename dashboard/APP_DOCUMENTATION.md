@@ -236,11 +236,11 @@ Because a deployed browser app cannot write to an arbitrary local folder without
 Recommended local archive root:
 
 ```txt
-C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES
+Any private operator-selected local archive folder outside the deployed app.
 ```
 
-This folder already exists on the operator machine and contains a local `README.md`.
-When the operator clicks `Connect Track Folder`, they should select this exact folder.
+The deployed UI intentionally does not expose absolute local paths.
+When the operator clicks `Connect Track Folder`, they should select their private work-package archive folder.
 
 Package folder format:
 
