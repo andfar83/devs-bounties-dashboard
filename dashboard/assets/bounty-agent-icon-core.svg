@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
   <title id="title">Bounty Agent Command Icon</title>
-  <desc id="desc">A premium cybernetic bounty dashboard mark with a circuit-chip B monogram, cyan glass, lime compute core, and agent traces.</desc>
+  <desc id="desc">A premium cybernetic bounty dashboard mark with an abstract AI circuit chip core, cyan glass, lime compute energy, and agent traces.</desc>
   <defs>
     <linearGradient id="shell" x1="11" y1="8" x2="86" y2="91" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0f2a38"/>
@@ -56,10 +56,14 @@
     <rect x="34" y="34" width="28" height="28" rx="7" fill="url(#core)" opacity=".95"/>
     <rect x="37.5" y="37.5" width="21" height="21" rx="4.5" fill="#06131d" opacity=".84"/>
     <path d="M41.5 31v6M48 31v6M54.5 31v6M41.5 59v6M48 59v6M54.5 59v6M31 41.5h6M31 48h6M31 54.5h6M59 41.5h6M59 48h6M59 54.5h6" fill="none" stroke="#b7ff35" stroke-opacity=".78" stroke-width="1.8" stroke-linecap="round"/>
-    <path d="M42.5 39.5h9.2a5.4 5.4 0 0 1 0 10.8h-9.2M42.5 49.8h10.8a5.8 5.8 0 0 1 0 11.6H42.5V39.5Z" fill="none" stroke="#031018" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M42.5 39.5h9.2a5.4 5.4 0 0 1 0 10.8h-9.2M42.5 49.8h10.8a5.8 5.8 0 0 1 0 11.6H42.5V39.5Z" fill="none" stroke="#effff9" stroke-opacity=".86" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="53" cy="44.8" r="1.45" fill="#d9ff67"/>
-    <circle cx="54.2" cy="55.2" r="1.45" fill="#33eaff"/>
+    <path d="M48 40v16M40 48h16M42.5 42.5l11 11M53.5 42.5l-11 11" fill="none" stroke="#031018" stroke-width="5.2" stroke-linecap="round"/>
+    <path d="M48 40v16M40 48h16M42.5 42.5l11 11M53.5 42.5l-11 11" fill="none" stroke="#effff9" stroke-opacity=".78" stroke-width="1.75" stroke-linecap="round"/>
+    <circle cx="48" cy="48" r="4.6" fill="#031018" stroke="#d9ff67" stroke-width="1.7"/>
+    <circle cx="48" cy="48" r="1.65" fill="#33eaff"/>
+    <circle cx="40" cy="48" r="1.15" fill="#b7ff35"/>
+    <circle cx="56" cy="48" r="1.15" fill="#b7ff35"/>
+    <circle cx="48" cy="40" r="1.15" fill="#33eaff"/>
+    <circle cx="48" cy="56" r="1.15" fill="#33eaff"/>
   </g>
 
   <path d="M18 17c16-9 42-10 61 2" fill="none" stroke="#ffffff" stroke-opacity=".2" stroke-width="2" stroke-linecap="round"/>
