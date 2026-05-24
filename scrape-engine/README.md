@@ -11,6 +11,8 @@ The dashboard should stay in `shadow_real` while adapters are being connected. I
 - `live_real` is blocked unless `ALLOW_LIVE_REAL=true`.
 - Supabase writes use `user_id,dedupe_key` upsert conflict handling.
 - Source health is tracked in `public.scrape_source_state`.
+- Every incoming candidate now passes through the real scrape intake adapter before it becomes a dashboard candidate.
+- Intake writes quality gate results, agent decisions, and cooperation events before downstream stages can act.
 - Secrets stay server-side only. Never put `SUPABASE_SERVICE_ROLE_KEY` in dashboard frontend code.
 
 ## Setup
@@ -52,7 +54,21 @@ Then open the dashboard, switch `Engine Mode` to `Shadow Real`, and the Candidat
 Local project folders are still created by the browser after the operator connects:
 
 ```txt
-C:\Users\andre\APPS\AA-STUDIO\BOUNTY_WORK_PACKAGES\bounty-<id>\
+<private-operator-archive>\bounty-<id>\
 ```
 
 The scrape engine writes metadata and events. The dashboard/operator decides when a work package folder is created.
+
+## Pre-Scraper Intelligence Layer
+
+The runner and dashboard share these preflight concepts:
+
+- `agent_knowledge`: seeded knowledge packs for Scout, Feasibility, Builder, and Ops.
+- `agent_memory`: durable lessons, platform reputation, preferences, failure patterns, and successful strategies.
+- `agent_decisions`: every agent decision with confidence, score, rationale, and gate status.
+- `quality_gate_results`: stage-specific pass/warn/block checks.
+- `failure_events`: retry/circuit-breaker and manual-review recovery trail.
+- `agent_cooperation_events`: handoffs between agents.
+- `scrape_intake_queue`: raw and normalized scrape payloads before candidate acceptance.
+
+Candidates with critical quality gate failures stay in the intake queue as rejected/blocked instead of entering the active bounty pipeline.

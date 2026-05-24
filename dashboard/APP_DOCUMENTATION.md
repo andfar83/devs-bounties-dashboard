@@ -92,6 +92,7 @@ Each card includes:
 - Completed count.
 - Reliability score.
 - Runtime state: `Off`, `Standby`, or `Working`.
+- Active bounty ID when an agent is processing work.
 - Hover tooltip with role functions and face asset.
 
 ### Flow View
@@ -134,6 +135,8 @@ Health tiles show:
 - Review queue size.
 - Package coverage.
 - Sync errors.
+- Quality gate blocked/warning count.
+- Active knowledge pack count.
 - Engine on/off state.
 
 ### Candidate Review Queue
@@ -148,6 +151,7 @@ Implemented actions:
 - `Package`: prepares a work package without necessarily approving downstream work.
 
 This view is important for `shadow_real`: real scrape results should land here first.
+Before an operator moves a bounty downstream, the app evaluates the relevant quality gates and records the agent decision contract.
 
 ### Work Package Center
 
@@ -309,6 +313,7 @@ Contracts live in:
 ```txt
 dashboard/config.js
 dashboard/contracts.js
+dashboard/agent-intelligence.js
 ```
 
 Defined constants:
@@ -322,6 +327,11 @@ Defined constants:
 - Storage bucket names.
 - Local package paths.
 - Supabase config.
+- Agent knowledge packs.
+- Agent decision contracts.
+- Quality gate definitions.
+- Failure recovery policies.
+- Cooperation handoff rules.
 
 Contract builders:
 
@@ -331,6 +341,36 @@ Contract builders:
 - Work package rows.
 - Work artifact rows.
 - Local work package files.
+
+## Agent Intelligence Layer
+
+The app now has a pre-scraper intelligence layer so real scrape data enters a controlled operating system instead of a loose table.
+
+Implemented components:
+
+- `Agent Knowledge`: seeded knowledge packs for Atlas, Prism, Forge, and Sentinel.
+- `Agent Memory`: Supabase table for durable lessons, platform reputation, preferences, failure patterns, and successful strategies.
+- `Agent Decision Contracts`: structured inputs, outputs, confidence thresholds, allowed decisions, and rationale.
+- `Quality Gates`: stage-specific checks that pass, warn, or block transitions.
+- `Failure Recovery`: source failure, quality gate failure, package failure, sync failure, and submission failure tracking.
+- `Agent Cooperation Events`: handoffs between Scout, Feasibility, Builder, and Ops.
+- `Real Scrape Intake Adapter`: raw scrape payloads normalize into candidates only after quality gates run.
+
+Supabase tables:
+
+- `agent_knowledge`
+- `agent_memory`
+- `agent_decisions`
+- `quality_gate_results`
+- `failure_events`
+- `agent_cooperation_events`
+- `scrape_intake_queue`
+
+SQL setup file:
+
+```txt
+dashboard/supabase-agent-intelligence.sql
+```
 
 ## Current Operating Modes
 
@@ -355,6 +395,7 @@ Implemented preflight behavior:
 - `shadow_real` reads candidate rows from Supabase instead of generating simulated rows.
 - The candidate review queue remains the manual gate before evaluation/package work.
 - Scrape source health, rate-limit, and circuit-breaker state is stored in `public.scrape_source_state`.
+- The scrape runner also writes intake queue rows, quality gate results, agent decisions, and cooperation events.
 - The local `scrape-engine/` runner is dry-run by default and blocks `live_real` unless explicitly approved.
 
 ### Live Real

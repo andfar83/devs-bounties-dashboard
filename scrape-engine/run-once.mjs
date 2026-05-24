@@ -2,7 +2,16 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { agentEventRow, APP_MODES, normalizeCandidate, scrapeRunRow } from "./lib/contracts.mjs";
+import {
+  agentDecisionRow,
+  agentEventRow,
+  APP_MODES,
+  cooperationEventRow,
+  normalizeCandidate,
+  qualityGateResultRow,
+  scrapeIntakeQueueRow,
+  scrapeRunRow
+} from "./lib/contracts.mjs";
 
 const DEFAULT_ENV_FILE = ".env.local";
 
@@ -136,23 +145,87 @@ async function main() {
     assertSourceAllowed(sourceState, { maxConsecutiveErrors });
   }
 
-  const rawCandidates = JSON.parse(await readFile(inputFile, "utf8"));
-  const candidates = rawCandidates.slice(0, maxCandidates).map((candidate) =>
-    normalizeCandidate(candidate, { userId, appMode, sourceKey })
+  const rawCandidates = JSON.parse(await readFile(inputFile, "utf8")).slice(0, maxCandidates);
+  const candidates = rawCandidates.map((candidate) => normalizeCandidate(candidate, { userId, appMode, sourceKey }));
+  const acceptedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed !== false);
+  const rejectedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed === false);
+  const intakeRows = rawCandidates.map((rawCandidate, index) =>
+    scrapeIntakeQueueRow({ userId, appMode, sourceKey, rawCandidate, normalizedCandidate: candidates[index] })
   );
+  const gateRows = candidates.map((candidate) => qualityGateResultRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
+  const decisionRows = candidates.map((candidate) => agentDecisionRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
+  const cooperationRows = acceptedCandidates.map((candidate) => cooperationEventRow({ userId, normalizedCandidate: candidate }));
 
   if (dryRun) {
-    console.log(JSON.stringify({ dryRun, appMode, sourceKey, count: candidates.length, candidates }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          dryRun,
+          appMode,
+          sourceKey,
+          count: candidates.length,
+          accepted: acceptedCandidates.length,
+          rejected: rejectedCandidates.length,
+          candidates,
+          intakeRows,
+          gateRows,
+          decisionRows,
+          cooperationRows
+        },
+        null,
+        2
+      )
+    );
     return;
   }
 
   const startedAt = new Date().toISOString();
   try {
-    await rest("bounty_candidates?on_conflict=user_id,dedupe_key", {
+    await rest("scrape_intake_queue?on_conflict=user_id,dedupe_key", {
       method: "POST",
       prefer: "resolution=merge-duplicates",
-      body: candidates
+      body: intakeRows
     });
+    if (gateRows.length) {
+      await rest("quality_gate_results", {
+        method: "POST",
+        body: gateRows
+      });
+    }
+    if (decisionRows.length) {
+      await rest("agent_decisions", {
+        method: "POST",
+        body: decisionRows
+      });
+    }
+    if (acceptedCandidates.length) {
+      await rest("bounty_candidates?on_conflict=user_id,dedupe_key", {
+        method: "POST",
+        prefer: "resolution=merge-duplicates",
+        body: acceptedCandidates
+      });
+    }
+    if (cooperationRows.length) {
+      await rest("agent_cooperation_events", {
+        method: "POST",
+        body: cooperationRows
+      });
+    }
+    if (acceptedCandidates.length) {
+      await rest("agent_events", {
+        method: "POST",
+        body: acceptedCandidates.map((candidate) =>
+          agentEventRow({
+            userId,
+            appMode,
+            sourceKey,
+            bountyLocalId: candidate.local_id,
+            action: "candidate_discovered",
+            reason: "Scrape engine preflight ingestion"
+          })
+        )
+      });
+    }
     await rest("scrape_runs", {
       method: "POST",
       body: scrapeRunRow({
@@ -165,28 +238,35 @@ async function main() {
           started_at: startedAt,
           completed_at: new Date().toISOString(),
           source_count: candidates.length,
-          created_count: candidates.length,
+          created_count: acceptedCandidates.length,
           updated_count: 0,
-          rejected_count: 0,
-          metadata: { runner: "scrape-engine/run-once.mjs" }
+          rejected_count: rejectedCandidates.length,
+          metadata: {
+            runner: "scrape-engine/run-once.mjs",
+            quality_gates: {
+              accepted: acceptedCandidates.length,
+              rejected: rejectedCandidates.length
+            }
+          }
         }
       })
     });
-    await rest("agent_events", {
-      method: "POST",
-      body: candidates.map((candidate) =>
-        agentEventRow({
-          userId,
+    await updateSourceState({ userId, sourceKey, status: "enabled", previousState: sourceState });
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          dryRun,
           appMode,
           sourceKey,
-          bountyLocalId: candidate.local_id,
-          action: "candidate_discovered",
-          reason: "Scrape engine preflight ingestion"
-        })
+          accepted: acceptedCandidates.length,
+          rejected: rejectedCandidates.length,
+          queued: intakeRows.length
+        },
+        null,
+        2
       )
-    });
-    await updateSourceState({ userId, sourceKey, status: "enabled", previousState: sourceState });
-    console.log(JSON.stringify({ ok: true, dryRun, appMode, sourceKey, inserted: candidates.length }, null, 2));
+    );
   } catch (error) {
     await updateSourceState({ userId, sourceKey, status: "circuit_open", errorMessage: error.message, previousState: sourceState });
     throw error;

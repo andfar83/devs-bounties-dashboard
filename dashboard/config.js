@@ -80,6 +80,8 @@ export const WORK_PACKAGE_FILES = {
   SOURCE_JSON: "challenge/source.json",
   RULES_MD: "challenge/rules.md",
   RETRIEVED_PAGE_HTML: "challenge/retrieved-page.html",
+  AGENT_CONTRACTS: "challenge/agent-contracts.json",
+  QUALITY_GATES: "challenge/quality-gates.json",
   FEASIBILITY_REPORT: "feasibility/feasibility_report.md",
   EFFORT_ESTIMATE: "feasibility/effort_estimate.json",
   RISK_REGISTER: "feasibility/risk_register.json",

@@ -9,6 +9,7 @@ import {
   SUPABASE_CONFIG
 } from "./config.js";
 import {
+  CONTRACT_VERSION,
   buildWorkPackageFiles,
   fromBountyCandidate,
   toAgentEvent,
@@ -17,6 +18,13 @@ import {
   toWorkArtifacts,
   toWorkPackage
 } from "./contracts.js";
+import {
+  AGENT_KNOWLEDGE_PACKS,
+  buildAgentDecision,
+  buildCooperationEvent,
+  evaluateQualityGates,
+  normalizeScrapeIntake
+} from "./agent-intelligence.js";
 
 const LIVE_TICK_MS = 2200;
 const FAST_POLL_MIN_MS = 5 * 60 * 1000;
@@ -454,6 +462,7 @@ function ensureSupabaseClient() {
     applySignedInState(session.user, email);
     void persistAuthUserProfile(session.user);
     void persistPendingSignupComment(session.user);
+    void persistAgentKnowledgeSeeds();
   });
   authSubscription = data.subscription;
   return supabaseClient;
@@ -595,6 +604,7 @@ async function bootstrapAuth() {
     applySignedInState(userData.user);
     await persistAuthUserProfile(userData.user);
     await persistPendingSignupComment(userData.user);
+    await persistAgentKnowledgeSeeds();
     await loadRecentAgentEvents();
     renderAll();
   } catch (error) {
@@ -847,6 +857,53 @@ function currentUserId() {
   return currentAuthUser?.id || null;
 }
 
+function agentForStage(stage) {
+  if (stage === BOUNTY_STAGES.DISCOVERED) {
+    return "scout";
+  }
+  if (stage === BOUNTY_STAGES.SHORTLISTED) {
+    return "feasibility";
+  }
+  if (stage === BOUNTY_STAGES.SUBMITTED) {
+    return "builder";
+  }
+  if (stage === BOUNTY_STAGES.WON || stage === BOUNTY_STAGES.PAID) {
+    return "ops";
+  }
+  return "system";
+}
+
+function applyStageGate(record, targetStage, agentId = agentForStage(targetStage)) {
+  const gateResult = evaluateQualityGates(record, targetStage);
+  record.qualityGate = gateResult;
+  if (gateResult.passed) {
+    return true;
+  }
+
+  const failedLabels = gateResult.checks.filter((check) => !check.passed).map((check) => check.label).join(", ");
+  const message = `Stage blocked by quality gates: ${failedLabels}`;
+  lastEngineError = message;
+  void persistQualityGateResult(record, gateResult, agentId);
+  void persistFailureEvent({
+    record,
+    agentId,
+    failureType: "quality_gate_failure",
+    severity: "critical",
+    message,
+    recoveryAction: "block_stage_transition",
+    metadata: { target_stage: targetStage, gate_result: gateResult }
+  });
+  recordAuditEvent({
+    record,
+    agentId,
+    action: "quality_gate_blocked",
+    fromStage: record.stage,
+    toStage: targetStage,
+    reason: message
+  });
+  return false;
+}
+
 function recordAuditEvent({ record = null, agentId = "system", action, fromStage = null, toStage = null, reason = "" }) {
   const event = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -881,9 +938,28 @@ async function persistTableRow(tableName, row, options = {}) {
 async function persistBountyCandidate(record) {
   record.appRunMode = appRunMode;
   record.supabaseSyncStatus = "pending";
+  record.qualityGate = evaluateQualityGates(record, record.stage);
+  record.agentDecision = buildAgentDecision(record, {
+    agentId: agentForStage(record.stage),
+    action: record.nextAction || "stage_sync",
+    toStage: record.stage
+  });
   const row = toBountyCandidate(record, currentUserId());
   const result = await persistTableRow("bounty_candidates", row, { onConflict: "user_id,dedupe_key" });
   record.supabaseSyncStatus = result.ok ? "synced" : result.skipped ? "local_only" : "failed";
+  if (result.ok) {
+    void persistQualityGateResult(record, record.qualityGate, record.agentDecision.agentId);
+    void persistAgentDecision(record, record.agentDecision);
+  } else if (result.error) {
+    void persistFailureEvent({
+      record,
+      agentId: record.agentDecision.agentId,
+      failureType: "sync_failure",
+      severity: "warning",
+      message: result.error.message,
+      recoveryAction: "mark_failed_keep_local"
+    });
+  }
   return result;
 }
 
@@ -914,6 +990,124 @@ async function persistAgentEvent(event) {
   const { error } = await supabaseClient.from("agent_events").insert(toAgentEvent({ ...event, userId: currentUserId() }));
   if (error) {
     console.warn("agent_events insert failed:", error.message);
+  }
+}
+
+async function persistAgentKnowledgeSeeds() {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId) {
+    return;
+  }
+
+  const rows = AGENT_KNOWLEDGE_PACKS.map((pack) => ({
+    contract_version: CONTRACT_VERSION,
+    user_id: userId,
+    agent_id: pack.agentId,
+    knowledge_key: pack.scope,
+    version: pack.version,
+    status: "active",
+    content: pack
+  }));
+  const { error } = await supabaseClient.from("agent_knowledge").upsert(rows, {
+    onConflict: "user_id,agent_id,knowledge_key,version"
+  });
+  if (error) {
+    console.warn("agent_knowledge seed failed:", error.message);
+  }
+}
+
+async function persistQualityGateResult(record, gateResult, agentId = "system") {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId || !record || !gateResult) {
+    return;
+  }
+  const { error } = await supabaseClient.from("quality_gate_results").insert({
+    contract_version: CONTRACT_VERSION,
+    user_id: userId,
+    bounty_local_id: record.id,
+    agent_id: agentId,
+    stage: gateResult.stage,
+    status: gateResult.status,
+    critical_failures: gateResult.criticalFailures,
+    checks: gateResult.checks,
+    metadata: {
+      app_mode: appRunMode
+    }
+  });
+  if (error) {
+    console.warn("quality_gate_results insert failed:", error.message);
+  }
+}
+
+async function persistAgentDecision(record, decision) {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId || !record || !decision) {
+    return;
+  }
+  const { error } = await supabaseClient.from("agent_decisions").insert({
+    contract_version: CONTRACT_VERSION,
+    user_id: userId,
+    bounty_local_id: record.id,
+    agent_id: decision.agentId,
+    decision: decision.decision,
+    confidence: Number.isFinite(decision.confidence) ? decision.confidence : null,
+    score: decision.score,
+    from_stage: decision.fromStage,
+    to_stage: decision.toStage,
+    gate_status: decision.gateStatus,
+    rationale: decision.rationale,
+    metadata: {
+      app_mode: appRunMode,
+      gate_result: decision.gateResult
+    }
+  });
+  if (error) {
+    console.warn("agent_decisions insert failed:", error.message);
+  }
+}
+
+async function persistCooperationEvent(event) {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId || !event) {
+    return;
+  }
+  const { error } = await supabaseClient.from("agent_cooperation_events").insert({
+    contract_version: CONTRACT_VERSION,
+    user_id: userId,
+    bounty_local_id: event.bountyLocalId,
+    from_agent_id: event.fromAgent,
+    to_agent_id: event.toAgent,
+    trigger: event.trigger,
+    payload: event.payload,
+    status: "queued"
+  });
+  if (error) {
+    console.warn("agent_cooperation_events insert failed:", error.message);
+  }
+}
+
+async function persistFailureEvent({ record = null, agentId = "system", failureType, severity = "warning", message = "", recoveryAction = "", metadata = {} }) {
+  const userId = currentUserId();
+  if (!supabaseClient || !userId || !failureType) {
+    return;
+  }
+  const { error } = await supabaseClient.from("failure_events").insert({
+    contract_version: CONTRACT_VERSION,
+    user_id: userId,
+    bounty_local_id: record?.id || null,
+    agent_id: agentId,
+    failure_type: failureType,
+    severity,
+    message,
+    recovery_action: recoveryAction,
+    status: "open",
+    metadata: {
+      app_mode: appRunMode,
+      ...metadata
+    }
+  });
+  if (error) {
+    console.warn("failure_events insert failed:", error.message);
   }
 }
 
@@ -1027,7 +1221,11 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
     let createdCount = 0;
     let updatedCount = 0;
     for (const row of data || []) {
-      const result = upsertRemoteBountyRecord(fromBountyCandidate(row));
+      const incoming = normalizeScrapeIntake(fromBountyCandidate(row), {
+        appMode: appRunMode,
+        sourceKey: row?.metadata?.source || SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY
+      });
+      const result = upsertRemoteBountyRecord(incoming);
       if (result === "created") {
         createdCount += 1;
       } else {
@@ -1059,6 +1257,14 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
   } catch (error) {
     lastEngineError = `Shadow Real sync failed: ${error.message}`;
     scrapeSchedule.lastRunMode = "Shadow Real sync failed";
+    void persistFailureEvent({
+      agentId: "integration",
+      failureType: "sync_failure",
+      severity: "warning",
+      message: error.message,
+      recoveryAction: "retry_with_circuit_breaker",
+      metadata: { mode, ingestion: "supabase_shadow_pull" }
+    });
     await persistScrapeRun(mode, {
       status: "failed",
       source_key: SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
@@ -1701,6 +1907,8 @@ function renderControlTower() {
   const packageCount = bountyRecords.filter(hasWorkPackageSignal).length;
   const trackedCount = bountyRecords.filter((record) => trackedPackageIds.has(record.id)).length;
   const syncFailed = bountyRecords.filter((record) => record.supabaseSyncStatus === "failed").length;
+  const gateBlocked = bountyRecords.filter((record) => record.qualityGate?.status === "blocked").length;
+  const gateWarnings = bountyRecords.filter((record) => record.qualityGate?.status === "warning").length;
 
   if (healthGrid) {
     healthGrid.innerHTML = `
@@ -1711,6 +1919,8 @@ function renderControlTower() {
       <div class="health-tile"><span>Review</span><strong>${pendingReview}</strong></div>
       <div class="health-tile"><span>Packages</span><strong>${trackedCount}/${packageCount}</strong></div>
       <div class="health-tile"><span>Sync errors</span><strong>${syncFailed}</strong></div>
+      <div class="health-tile"><span>Gates</span><strong>${gateBlocked}/${gateWarnings}</strong></div>
+      <div class="health-tile"><span>Knowledge</span><strong>${AGENT_KNOWLEDGE_PACKS.length}</strong></div>
       <div class="health-tile"><span>Engine</span><strong>${shadowRealSyncInFlight ? "Syncing" : scrapeEngineRunning ? "On" : "Off"}</strong></div>
     `;
   }
@@ -2360,16 +2570,53 @@ function promoteRandomRecord(fromStage, toStage, chance) {
   }
   const target = candidates[Math.floor(Math.random() * candidates.length)];
   const previousStage = target.stage;
+  const agentId = toStage === BOUNTY_STAGES.SHORTLISTED ? "scout" : agentForStage(toStage);
+  if (!applyStageGate(target, toStage, agentId)) {
+    return null;
+  }
   target.stage = toStage;
   void persistBountyCandidate(target);
   void persistAgentEvent({
     record: target,
-    agentId: toStage === BOUNTY_STAGES.SHORTLISTED ? "scout" : "feasibility",
+    agentId,
     action: "stage_promoted",
     fromStage: previousStage,
     toStage,
     reason: "Simulation pipeline promotion"
   });
+  if (toStage === BOUNTY_STAGES.SHORTLISTED) {
+    void persistCooperationEvent(
+      buildCooperationEvent({
+        record: target,
+        fromAgent: "scout",
+        toAgent: "feasibility",
+        trigger: "candidate_approved",
+        payload: { scores: target.scores, red_flags: target.redFlags || [] }
+      })
+    );
+  }
+  if (toStage === BOUNTY_STAGES.SUBMITTED) {
+    void persistCooperationEvent(
+      buildCooperationEvent({
+        record: target,
+        fromAgent: "feasibility",
+        toAgent: "builder",
+        trigger: "conditional_go",
+        payload: { scope: target.scope, fix_required: target.fixRequired }
+      })
+    );
+  }
+  if (toStage === BOUNTY_STAGES.WON) {
+    void persistCooperationEvent(
+      buildCooperationEvent({
+        record: target,
+        fromAgent: "builder",
+        toAgent: "ops",
+        trigger: "package_ready",
+        payload: { package_status: target.packageStatus || "prepared" }
+      })
+    );
+  }
   if (stageRank[toStage] >= stageRank.shortlisted) {
     trackPipelinePackage(target, "Prepared pipeline bounty package");
   }
@@ -2989,6 +3236,9 @@ function monitorCandidate(record) {
 
 function evaluateCandidate(record) {
   const previousStage = record.stage;
+  if (!applyStageGate(record, previousStage, "scout") || !applyStageGate(record, BOUNTY_STAGES.SHORTLISTED, "feasibility")) {
+    return;
+  }
   record.stage = BOUNTY_STAGES.SHORTLISTED;
   record.nextAction = "evaluate_now";
   void persistBountyCandidate(record);
@@ -3000,6 +3250,15 @@ function evaluateCandidate(record) {
     toStage: record.stage,
     reason: "Operator approved candidate for feasibility"
   });
+  void persistCooperationEvent(
+    buildCooperationEvent({
+      record,
+      fromAgent: "scout",
+      toAgent: "feasibility",
+      trigger: "candidate_approved",
+      payload: { scores: record.scores, red_flags: record.redFlags || [] }
+    })
+  );
   trackPipelinePackage(record, "Prepared approved bounty package");
 }
 

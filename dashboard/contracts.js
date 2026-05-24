@@ -7,6 +7,7 @@ import {
   STORAGE_BUCKETS,
   WORK_PACKAGE_FILES
 } from "./config.js";
+import { AGENT_DECISION_CONTRACTS, QUALITY_GATES } from "./agent-intelligence.js";
 
 export const CONTRACT_VERSION = "2026-05-22.v1";
 
@@ -44,8 +45,11 @@ export function toBountyCandidate(record, userId = null) {
     next_action: record.nextAction || "evaluate_now",
     confidence: record.confidence ?? null,
     metadata: {
+      ...(record.metadata || {}),
       app_mode: record.appRunMode || APP_MODE.SIMULATION,
-      source: "dashboard-sim"
+      source: record.metadata?.source || "dashboard-sim",
+      quality_gate: record.qualityGate || null,
+      agent_decision: record.agentDecision || null
     }
   };
 }
@@ -145,6 +149,8 @@ export function toWorkArtifacts(record, userId = null) {
   return [
     { ...base, artifact_type: ARTIFACT_TYPES.SOURCE, relative_path: WORK_PACKAGE_FILES.SOURCE_JSON },
     { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.RULES_MD },
+    { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.AGENT_CONTRACTS },
+    { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.QUALITY_GATES },
     { ...base, artifact_type: ARTIFACT_TYPES.FEASIBILITY_REPORT, relative_path: WORK_PACKAGE_FILES.FEASIBILITY_REPORT },
     { ...base, artifact_type: ARTIFACT_TYPES.EFFORT_ESTIMATE, relative_path: WORK_PACKAGE_FILES.EFFORT_ESTIMATE },
     { ...base, artifact_type: ARTIFACT_TYPES.RISK_REGISTER, relative_path: WORK_PACKAGE_FILES.RISK_REGISTER },
@@ -234,6 +240,18 @@ This file is a placeholder until the real scrape engine stores source rules and 
     {
       path: WORK_PACKAGE_FILES.RETRIEVED_PAGE_HTML,
       content: `<!-- Source capture placeholder for ${record.id}. Real scraper should store raw retrieved HTML here. -->`
+    },
+    {
+      path: WORK_PACKAGE_FILES.AGENT_CONTRACTS,
+      content: JSON.stringify(AGENT_DECISION_CONTRACTS, null, 2)
+    },
+    {
+      path: WORK_PACKAGE_FILES.QUALITY_GATES,
+      content: JSON.stringify({
+        current_stage: record.stage,
+        latest_result: record.qualityGate || null,
+        gates: QUALITY_GATES
+      }, null, 2)
     },
     {
       path: WORK_PACKAGE_FILES.FEASIBILITY_REPORT,

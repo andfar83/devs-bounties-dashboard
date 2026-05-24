@@ -77,6 +77,7 @@ The dashboard uses four synchronized views:
   - `ops/submission-checklist.md`, `submission_log.md`, `post_submit_plan.md`.
 - The dashboard also defines Supabase contracts for candidates, scrape runs, agent events, work packages, artifacts, and submission logs.
 - Run [`supabase-bounty-workflow.sql`](./supabase-bounty-workflow.sql) once to create the workflow tables, RLS policies, and private `bounty-artifacts` Storage bucket.
+- Work packages now include `challenge/agent-contracts.json` and `challenge/quality-gates.json` so each bounty carries the agent operating contract that was active when the package was created.
 
 ## Control Tower Readiness
 
@@ -88,6 +89,7 @@ The dashboard uses four synchronized views:
 - Only the selected cadence is scheduled while the engine is running.
 - In `shadow_real`, cadence buttons pull real candidate rows from Supabase instead of creating simulated candidates.
 - `Health` summarizes last run counts, review queue size, package coverage, sync errors, and engine state.
+- `Health` also exposes gate blocks/warnings and the number of active agent knowledge packs loaded.
 - `Candidate Review Queue` supports reject, monitor, evaluate, and package actions before work moves downstream.
 - `Work Package Center` shows local folder status, Supabase sync status, artifact count, last event, and next action.
 - `Audit Trail` records operator and agent events in-session so scrape engine behavior can be inspected before live automation.
@@ -99,6 +101,15 @@ The dashboard uses four synchronized views:
 - Real writes require server-side `SUPABASE_SERVICE_ROLE_KEY` plus `SUPABASE_TARGET_USER_ID`.
 - `live_real` is blocked until `ALLOW_LIVE_REAL=true`.
 - Source health/rate-limit/circuit state is stored in `public.scrape_source_state`.
+- The pre-scraper intelligence layer adds:
+  - `agent_knowledge` for agent knowledge packs,
+  - `agent_memory` for durable lessons and preferences,
+  - `agent_decisions` for decision contracts and rationale,
+  - `quality_gate_results` for pass/warn/block checks,
+  - `failure_events` for recovery and circuit-breaker audit,
+  - `agent_cooperation_events` for handoffs,
+  - `scrape_intake_queue` for raw and normalized scrape payloads.
+- Run [`supabase-agent-intelligence.sql`](./supabase-agent-intelligence.sql) to install this layer if the full workflow SQL has not already been reapplied.
 
 ## Local Run
 
