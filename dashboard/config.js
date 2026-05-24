@@ -97,5 +97,5 @@ export const WORK_PACKAGE_FILES = {
 export const SUPABASE_CONFIG = {
   URL: "https://mwniqoxghjquriybjdjs.supabase.co",
   PUBLISHABLE_KEY: "sb_publishable_nsSUN_oXLl9VfFWCBglN-w_Pp_vcBb5",
-  AUTH_EMAIL_REDIRECT_TO: "https://aa-dashboard-bounties.vercel.app"
+  AUTH_EMAIL_REDIRECT_TO: "https://aa-bounties-dashboard.vercel.app"
 };

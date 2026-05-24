@@ -8,6 +8,9 @@ create table if not exists public.user_profiles (
 
 alter table public.user_profiles enable row level security;
 
+grant usage on schema public to authenticated;
+grant select, insert, update on public.user_profiles to authenticated;
+
 drop policy if exists "user_profiles_select_own" on public.user_profiles;
 create policy "user_profiles_select_own"
 on public.user_profiles
@@ -31,6 +34,9 @@ create table if not exists public.user_comments (
 );
 
 alter table public.user_comments enable row level security;
+
+grant select, insert on public.user_comments to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
 
 drop policy if exists "user_comments_select_own" on public.user_comments;
 create policy "user_comments_select_own"
