@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#061019" />
     <title>Bounty Agent Control Center</title>
+    <link rel="icon" type="image/svg+xml" href="./assets/bounty-agent-icon.svg" />
+    <link rel="shortcut icon" href="./assets/bounty-agent-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -84,12 +87,15 @@
     <div id="app-shell" hidden>
       <div class="bg-noise"></div>
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Bounty Ops</p>
-          <h1>Hybrid Agent Command Dashboard</h1>
-          <p class="sub">
-            One coordinated flow: discover, decide, build, submit.
-          </p>
+        <div class="brand-lockup">
+          <img class="app-logo" src="./assets/bounty-agent-icon.svg" alt="Bounty Agent logo" />
+          <div>
+            <p class="eyebrow">Bounty Ops</p>
+            <h1>Hybrid Agent Command Dashboard</h1>
+            <p class="sub">
+              One coordinated flow: discover, decide, build, submit.
+            </p>
+          </div>
         </div>
         <div class="controls">
           <div id="user-profile" class="user-profile" hidden>

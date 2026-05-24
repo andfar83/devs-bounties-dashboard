@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">Bounty Agent Command Icon</title>
+  <desc id="desc">A premium cybernetic bounty dashboard mark with cyan glass, lime compute core, and circuit traces.</desc>
+  <defs>
+    <linearGradient id="shell" x1="11" y1="8" x2="86" y2="91" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f2a38"/>
+      <stop offset=".46" stop-color="#07131d"/>
+      <stop offset="1" stop-color="#03080d"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="12" y1="15" x2="84" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8cf7ff"/>
+      <stop offset=".45" stop-color="#1bc9ff"/>
+      <stop offset=".72" stop-color="#b7ff35"/>
+      <stop offset="1" stop-color="#16f06b"/>
+    </linearGradient>
+    <linearGradient id="core" x1="31" y1="25" x2="67" y2="73" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d7ff64"/>
+      <stop offset=".38" stop-color="#55ff8a"/>
+      <stop offset=".72" stop-color="#21d7ff"/>
+      <stop offset="1" stop-color="#0e709d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="45%" r="58%">
+      <stop offset="0" stop-color="#b7ff35" stop-opacity=".62"/>
+      <stop offset=".42" stop-color="#22d8ff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#03080d" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.24 0 0 0 0 1 0 0 0 0 0.72 0 0 0 .68 0" result="glowColor"/>
+      <feMerge>
+        <feMergeNode in="glowColor"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="6" y="6" width="84" height="84" rx="24" fill="url(#shell)"/>
+  <rect x="7.5" y="7.5" width="81" height="81" rx="22.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M14 30c14-18 43-20 67-6" fill="none" stroke="#b7ff35" stroke-opacity=".22" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="48" cy="48" r="36" fill="url(#glow)"/>
+
+  <g opacity=".74" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 33h12l6 7" fill="none" stroke="#33eaff" stroke-width="2"/>
+    <path d="M76 34H65l-6 7" fill="none" stroke="#9dff42" stroke-width="2"/>
+    <path d="M22 65h14l6-8" fill="none" stroke="#9dff42" stroke-width="2"/>
+    <path d="M75 65H62l-6-8" fill="none" stroke="#33eaff" stroke-width="2"/>
+    <circle cx="20" cy="33" r="3" fill="#33eaff"/>
+    <circle cx="76" cy="34" r="3" fill="#b7ff35"/>
+    <circle cx="22" cy="65" r="3" fill="#b7ff35"/>
+    <circle cx="75" cy="65" r="3" fill="#33eaff"/>
+  </g>
+
+  <g filter="url(#softGlow)">
+    <path d="M48 21 70 34v28L48 75 26 62V34Z" fill="#06131d" stroke="url(#rim)" stroke-width="2.8"/>
+    <path d="M48 21v54M26 34l22 13 22-13M26 62l22-15 22 15" fill="none" stroke="#83f7ff" stroke-opacity=".42" stroke-width="1.5"/>
+    <path d="M36 41h24l-3.8 16.5A8 8 0 0 1 48.4 64h-.8a8 8 0 0 1-7.8-6.5Z" fill="url(#core)" opacity=".92"/>
+    <path d="M41 43.5h14.5a5 5 0 0 1 0 10H42.8l-1.8 8" fill="none" stroke="#031018" stroke-width="4" stroke-linecap="round"/>
+    <path d="M41 43.5h14.5a5 5 0 0 1 0 10H42.8l-1.8 8" fill="none" stroke="#effff9" stroke-opacity=".75" stroke-width="1.45" stroke-linecap="round"/>
+    <circle cx="56" cy="48.5" r="2.2" fill="#031018"/>
+    <circle cx="56" cy="48.5" r=".9" fill="#d9ff67"/>
+  </g>
+
+  <path d="M18 17c16-9 42-10 61 2" fill="none" stroke="#ffffff" stroke-opacity=".2" stroke-width="2" stroke-linecap="round"/>
+  <path d="M16 76c20 11 43 10 64-2" fill="none" stroke="#33eaff" stroke-opacity=".18" stroke-width="2" stroke-linecap="round"/>
+</svg>

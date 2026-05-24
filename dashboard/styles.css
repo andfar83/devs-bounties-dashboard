@@ -232,6 +232,21 @@ body {
   transform: translateY(-105%);
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.app-logo {
+  width: clamp(42px, 4vw, 56px);
+  height: clamp(42px, 4vw, 56px);
+  flex: 0 0 auto;
+  border-radius: 16px;
+  filter: drop-shadow(0 0 16px rgba(183, 255, 53, 0.22)) drop-shadow(0 0 24px rgba(33, 215, 255, 0.18));
+}
+
 .eyebrow {
   margin: 0;
   letter-spacing: 0.15em;
@@ -1562,6 +1577,10 @@ th {
 @media (max-width: 860px) {
   .topbar {
     flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .brand-lockup {
     align-items: flex-start;
   }
 
