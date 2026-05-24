@@ -21,6 +21,10 @@
       "destination": "/dashboard/contracts.js"
     },
     {
+      "source": "/agent-intelligence.js",
+      "destination": "/dashboard/agent-intelligence.js"
+    },
+    {
       "source": "/styles.css",
       "destination": "/dashboard/styles.css"
     },

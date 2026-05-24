@@ -447,6 +447,10 @@ function ensureSupabaseClient() {
   if (!HARDWIRED_SUPABASE_URL || !HARDWIRED_SUPABASE_PUBLISHABLE_KEY) {
     throw new Error("Supabase configuration is missing.");
   }
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+
   supabaseClient = createClient(HARDWIRED_SUPABASE_URL, HARDWIRED_SUPABASE_PUBLISHABLE_KEY);
 
   if (authSubscription) {
