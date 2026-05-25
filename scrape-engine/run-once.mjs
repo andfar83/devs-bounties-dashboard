@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   agentDecisionRow,
@@ -81,11 +83,27 @@ async function rest(path, { method = "GET", body, prefer = "" } = {}) {
   return payload;
 }
 
+function publicInputFileLabel(inputFile) {
+  if (!inputFile) {
+    return "";
+  }
+  const relativePath = relative(process.cwd(), inputFile).replace(/\\/g, "/");
+  if (relativePath && !relativePath.startsWith("..") && !/^[a-zA-Z]:/.test(relativePath)) {
+    return relativePath;
+  }
+  return String(inputFile).split(/[\\/]/).pop();
+}
+
 async function getSourceState({ userId, sourceKey }) {
   const rows = await rest(
     `scrape_source_state?user_id=eq.${encodeURIComponent(userId)}&source_key=eq.${encodeURIComponent(sourceKey)}&select=*`
   );
   return rows?.[0] || null;
+}
+
+async function getExistingCandidateDedupeKeys({ userId }) {
+  const rows = await rest(`bounty_candidates?user_id=eq.${encodeURIComponent(userId)}&select=dedupe_key`);
+  return new Set((rows || []).map((row) => row.dedupe_key).filter(Boolean));
 }
 
 function assertSourceAllowed(sourceState, { maxConsecutiveErrors }) {
@@ -125,7 +143,7 @@ async function updateSourceState({ userId, sourceKey, status, errorMessage = "",
   });
 }
 
-async function main() {
+export async function runOnce({ print = true } = {}) {
   await loadEnvFile(env("SCRAPE_ENV_FILE", DEFAULT_ENV_FILE));
 
   const appMode = env("SCRAPE_ENGINE_MODE", "shadow_real");
@@ -162,40 +180,44 @@ async function main() {
   }
 
   const adapterResult = await loadAdapterCandidates({ adapter, inputFile, maxCandidates });
+  const inputFileLabel = publicInputFileLabel(adapterResult.inputFile);
   const rawCandidates = adapterResult.candidates;
   const candidates = rawCandidates.map((candidate) => normalizeCandidate(candidate, { userId, appMode, sourceKey }));
   const acceptedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed !== false);
   const rejectedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed === false);
+  const existingDedupeKeys = dryRun ? new Set() : await getExistingCandidateDedupeKeys({ userId });
+  const newAcceptedCandidates = acceptedCandidates.filter((candidate) => !existingDedupeKeys.has(candidate.dedupe_key));
+  const updatedAcceptedCandidates = acceptedCandidates.filter((candidate) => existingDedupeKeys.has(candidate.dedupe_key));
   const intakeRows = rawCandidates.map((rawCandidate, index) =>
     scrapeIntakeQueueRow({ userId, appMode, sourceKey, rawCandidate, normalizedCandidate: candidates[index] })
   );
-  const gateRows = candidates.map((candidate) => qualityGateResultRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
-  const decisionRows = candidates.map((candidate) => agentDecisionRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
-  const cooperationRows = acceptedCandidates.map((candidate) => cooperationEventRow({ userId, normalizedCandidate: candidate }));
+  const gateRows = newAcceptedCandidates.map((candidate) => qualityGateResultRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
+  const decisionRows = newAcceptedCandidates.map((candidate) => agentDecisionRow({ userId, normalizedCandidate: candidate })).filter(Boolean);
+  const cooperationRows = newAcceptedCandidates.map((candidate) => cooperationEventRow({ userId, normalizedCandidate: candidate }));
 
   if (dryRun) {
-    console.log(
-      JSON.stringify(
-        {
-          dryRun,
-          appMode,
-          sourceKey,
-          adapter: adapterResult.adapter,
-          inputFile: adapterResult.inputFile,
-          count: candidates.length,
-          accepted: acceptedCandidates.length,
-          rejected: rejectedCandidates.length,
-          candidates,
-          intakeRows,
-          gateRows,
-          decisionRows,
-          cooperationRows
-        },
-        null,
-        2
-      )
-    );
-    return;
+    const result = {
+      dryRun,
+      appMode,
+      sourceKey,
+      adapter: adapterResult.adapter,
+      inputFile: inputFileLabel,
+      sourceResults: adapterResult.sourceResults || [],
+      count: candidates.length,
+      accepted: acceptedCandidates.length,
+      created: newAcceptedCandidates.length,
+      updated: updatedAcceptedCandidates.length,
+      rejected: rejectedCandidates.length,
+      candidates,
+      intakeRows,
+      gateRows,
+      decisionRows,
+      cooperationRows
+    };
+    if (print) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+    return result;
   }
 
   const startedAt = new Date().toISOString();
@@ -230,10 +252,10 @@ async function main() {
         body: cooperationRows
       });
     }
-    if (acceptedCandidates.length) {
+    if (newAcceptedCandidates.length) {
       await rest("agent_events", {
         method: "POST",
-        body: acceptedCandidates.map((candidate) =>
+        body: newAcceptedCandidates.map((candidate) =>
           agentEventRow({
             userId,
             appMode,
@@ -257,15 +279,18 @@ async function main() {
           started_at: startedAt,
           completed_at: new Date().toISOString(),
           source_count: candidates.length,
-          created_count: acceptedCandidates.length,
-          updated_count: 0,
+          created_count: newAcceptedCandidates.length,
+          updated_count: updatedAcceptedCandidates.length,
           rejected_count: rejectedCandidates.length,
           metadata: {
             runner: "scrape-engine/run-once.mjs",
             adapter: adapterResult.adapter,
-            input_file: adapterResult.inputFile,
+            input_file: inputFileLabel,
+            source_results: adapterResult.sourceResults || [],
             quality_gates: {
               accepted: acceptedCandidates.length,
+              created: newAcceptedCandidates.length,
+              updated: updatedAcceptedCandidates.length,
               rejected: rejectedCandidates.length
             }
           }
@@ -273,28 +298,30 @@ async function main() {
       })
     });
     await updateSourceState({ userId, sourceKey, status: "enabled", previousState: sourceState });
-    console.log(
-      JSON.stringify(
-        {
-          ok: true,
-          dryRun,
-          appMode,
-          sourceKey,
-          accepted: acceptedCandidates.length,
-          rejected: rejectedCandidates.length,
-          queued: intakeRows.length
-        },
-        null,
-        2
-      )
-    );
+    const result = {
+      ok: true,
+      dryRun,
+      appMode,
+      sourceKey,
+      accepted: acceptedCandidates.length,
+      created: newAcceptedCandidates.length,
+      updated: updatedAcceptedCandidates.length,
+      rejected: rejectedCandidates.length,
+      queued: intakeRows.length
+    };
+    if (print) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+    return result;
   } catch (error) {
     await updateSourceState({ userId, sourceKey, status: "circuit_open", errorMessage: error.message, previousState: sourceState });
     throw error;
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runOnce().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

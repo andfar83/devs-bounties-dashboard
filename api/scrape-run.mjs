@@ -1,0 +1,98 @@
+import { runOnce } from "../scrape-engine/run-once.mjs";
+
+const MODE_LIMITS = {
+  fast: 5,
+  deep: 25,
+  full: 100
+};
+
+function sendJson(response, statusCode, payload) {
+  response.statusCode = statusCode;
+  response.setHeader("Content-Type", "application/json");
+  response.setHeader("Cache-Control", "no-store");
+  response.end(JSON.stringify(payload));
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  return text ? JSON.parse(text) : {};
+}
+
+async function verifySupabaseUser(request) {
+  const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const targetUserId = process.env.SUPABASE_TARGET_USER_ID;
+  const authorization = request.headers.authorization || "";
+
+  if (!supabaseUrl || !serviceRoleKey || !targetUserId) {
+    throw new Error("Scrape API is missing Supabase server environment variables.");
+  }
+  if (!authorization.startsWith("Bearer ")) {
+    const error = new Error("Missing Supabase session token.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: authorization
+    }
+  });
+  const user = await authResponse.json().catch(() => null);
+  if (!authResponse.ok || !user?.id) {
+    const error = new Error("Invalid Supabase session token.");
+    error.statusCode = 401;
+    throw error;
+  }
+  if (user.id !== targetUserId) {
+    const error = new Error("This account is not authorized to run the scrape engine.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return user;
+}
+
+function configureScrapeEnvironment({ mode, appMode }) {
+  process.env.SCRAPE_ENGINE_MODE = appMode === "live_real" ? "live_real" : "shadow_real";
+  process.env.SCRAPE_DRY_RUN = "false";
+  process.env.SCRAPE_MODE = mode;
+  process.env.SCRAPE_ADAPTER = process.env.SCRAPE_ADAPTER || "web";
+  process.env.SCRAPE_SOURCE_KEY = process.env.SCRAPE_SOURCE_KEY || "immunefi_web";
+  process.env.SCRAPE_INPUT_FILE = process.env.SCRAPE_INPUT_FILE || "./scrape-engine/sources/bounty-sources.json";
+  process.env.SCRAPE_MAX_CANDIDATES = String(MODE_LIMITS[mode] || MODE_LIMITS.fast);
+  process.env.ALLOW_MANUAL_FIXTURE_WRITE = "false";
+  process.env.ALLOW_FIXTURE_INPUT_WRITE = "false";
+}
+
+export default async function handler(request, response) {
+  if (request.method !== "POST") {
+    response.setHeader("Allow", "POST");
+    sendJson(response, 405, { ok: false, error: "Method not allowed." });
+    return;
+  }
+
+  try {
+    await verifySupabaseUser(request);
+    const body = await readJsonBody(request);
+    const mode = MODE_LIMITS[body.mode] ? body.mode : "fast";
+    configureScrapeEnvironment({ mode, appMode: body.appMode });
+
+    const result = await runOnce({ print: false });
+    sendJson(response, 200, {
+      ok: true,
+      mode,
+      result
+    });
+  } catch (error) {
+    sendJson(response, error.statusCode || 500, {
+      ok: false,
+      error: error.message || "Scrape engine failed."
+    });
+  }
+}

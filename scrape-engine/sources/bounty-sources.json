@@ -1,0 +1,15 @@
+{
+  "sources": [
+    {
+      "key": "immunefi_web",
+      "label": "Immunefi Bug Bounty Directory",
+      "platform": "Immunefi",
+      "url": "https://immunefi.com/bug-bounty/",
+      "strategy": "immunefi_bounties",
+      "defaultType": "Security",
+      "defaultConfidence": 0.72,
+      "platformTrust": 9,
+      "enabled": true
+    }
+  ]
+}

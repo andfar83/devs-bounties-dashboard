@@ -12,6 +12,7 @@ The dashboard should stay in `shadow_real` while adapters are being connected. I
 - `manual_fixture` writes are blocked unless `ALLOW_MANUAL_FIXTURE_WRITE=true`.
 - Files from `fixtures/` are blocked from writes unless `ALLOW_FIXTURE_INPUT_WRITE=true`.
 - Supabase writes use `user_id,dedupe_key` upsert conflict handling.
+- Repeated scrape runs are idempotent: existing candidates update in place and do not duplicate quality gates, decisions, cooperation events, or agent events.
 - Source health is tracked in `public.scrape_source_state`.
 - Every incoming candidate now passes through the real scrape intake adapter before it becomes a dashboard candidate.
 - Intake writes quality gate results, agent decisions, and cooperation events before downstream stages can act.
@@ -90,6 +91,55 @@ Expected candidate fields:
 - `fixRequired` or `fix_required`
 - `scores`
 - `confidence`
+
+## Built-in Web Adapter
+
+For the first real scrape pass, the engine can read configured public web sources. The current source file includes Immunefi's public bug bounty directory.
+
+Dry run:
+
+```powershell
+$env:SCRAPE_DRY_RUN='true'
+$env:SCRAPE_ADAPTER='web'
+$env:SCRAPE_SOURCE_KEY='immunefi_web'
+$env:SCRAPE_INPUT_FILE='.\sources\bounty-sources.json'
+node .\run-once.mjs
+```
+
+Shadow write:
+
+```powershell
+$env:SCRAPE_DRY_RUN='false'
+$env:SCRAPE_ADAPTER='web'
+$env:SCRAPE_SOURCE_KEY='immunefi_web'
+$env:SCRAPE_INPUT_FILE='.\sources\bounty-sources.json'
+node .\run-once.mjs
+```
+
+The web adapter only extracts fields it can support from the public page. Missing payout/deadline values remain explicit (`0`/empty) and are flagged with red flags for operator verification.
+
+Every web run stores public source labels and source URLs only. It does not write private local file paths to Supabase metadata.
+
+## Vercel API Bridge
+
+The deployed dashboard calls `POST /api/scrape-run` when `Shadow Real` or `Live Real` starts a cadence cycle. The endpoint:
+
+- Requires a valid Supabase session token from the signed-in dashboard user.
+- Verifies the session user matches `SUPABASE_TARGET_USER_ID`.
+- Runs this scrape engine server-side with the service role key.
+- Writes candidates, intake rows, gates, decisions, events, source state, and scrape run records to Supabase.
+- Keeps `SUPABASE_SERVICE_ROLE_KEY` off the browser.
+
+Required Vercel Production env vars:
+
+```txt
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_TARGET_USER_ID
+SCRAPE_ADAPTER=web
+SCRAPE_SOURCE_KEY=immunefi_web
+SCRAPE_INPUT_FILE=./scrape-engine/sources/bounty-sources.json
+```
 
 ## Folder Output
 

@@ -1200,6 +1200,38 @@ async function loadRecentAgentEvents() {
     .slice(0, 80);
 }
 
+async function triggerServerScrape(mode = SCRAPE_MODES.FAST) {
+  if (appRunMode === APP_MODE.SIMULATION) {
+    return null;
+  }
+  if (!supabaseClient || !currentUserId()) {
+    throw new Error("Sign in before running the real scrape engine.");
+  }
+
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (sessionError || !accessToken) {
+    throw new Error(sessionError?.message || "Supabase session token is missing.");
+  }
+
+  const response = await fetch(SCRAPE_ENGINE_PREFLIGHT.RUN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({
+      mode,
+      appMode: appRunMode
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Scrape API failed with ${response.status}`);
+  }
+  return payload.result || payload;
+}
+
 async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
   if (shadowRealSyncInFlight) {
     return;
@@ -1215,10 +1247,13 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
   scoutWorkingUntil = Date.now() + 12 * 1000;
   lastScrapeModeKey = mode;
   setModeButtonActive(mode);
-  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} sync`;
+  scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} scraping`;
   const startedAt = new Date(Date.now() - 1000).toISOString();
 
   try {
+    const engineResult = await triggerServerScrape(mode);
+    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} sync`;
+
     const { data, error } = await supabaseClient
       .from("bounty_candidates")
       .select(
@@ -1249,10 +1284,12 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
 
     await loadRecentAgentEvents();
     pruneBountyRecords();
-    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)}: ${createdCount} new / ${updatedCount} updated`;
+    const engineCreated = Number(engineResult?.created || 0);
+    const engineUpdated = Number(engineResult?.updated || 0);
+    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)}: ${createdCount} UI new / ${updatedCount} UI updated | engine ${engineCreated}/${engineUpdated}`;
     await persistScrapeRun(mode, {
       status: "done",
-      source_key: SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
+      source_key: engineResult?.sourceKey || SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
       started_at: startedAt,
       completed_at: new Date().toISOString(),
       source_count: (data || []).length,
@@ -1260,7 +1297,8 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
       updated_count: updatedCount,
       rejected_count: 0,
       metadata: {
-        ingestion: "supabase_shadow_pull"
+        ingestion: "supabase_shadow_pull",
+        engine_result: engineResult || null
       }
     });
     recordAuditEvent({
