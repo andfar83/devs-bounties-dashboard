@@ -144,8 +144,6 @@
               <p id="flow-scout" class="flow-value">0</p>
               <p class="flow-help">Opportunities scanned</p>
               <p id="scout-status" class="flow-meta">Scout status: Active</p>
-              <p id="scrape-cadence" class="flow-meta">Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h</p>
-              <p id="scrape-next" class="flow-meta">Next scrape: --</p>
             </div>
             <div class="flow-connector"></div>
             <div class="flow-step step-feas">
@@ -219,7 +217,12 @@
                 <button id="scrape-deep-btn" class="btn btn-secondary btn-mini" type="button">Deep Scan</button>
                 <button id="scrape-full-btn" class="btn btn-secondary btn-mini" type="button">Full Refresh</button>
               </div>
+              <div class="cadence-readout" aria-live="polite">
+                <p id="scrape-cadence" class="cadence-meta">Fast 5-15m | Deep 30-60m | Full 6-24h</p>
+                <p id="scrape-next" class="cadence-next">Next scrape: --</p>
+              </div>
               <span id="cadence-status" class="meta">Choose cadence before Start Engine.</span>
+              <span id="cadence-elapsed" class="cadence-elapsed">Cycle elapsed: idle</span>
             </div>
             <div class="control-block control-actions">
               <button id="scrape-engine-btn" class="btn btn-launch" type="button">Start Engine</button>

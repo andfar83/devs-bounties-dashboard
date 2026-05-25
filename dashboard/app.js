@@ -160,6 +160,7 @@ let scrapeEngineRunning = false;
 let scrapeEngineButtonFocused = false;
 let scoutWorkingUntil = 0;
 let selectedCadenceMode = null;
+let cadenceCycleStartedAt = null;
 let lastScrapeModeKey = null;
 let reportsDirHandle = null;
 let generatedReportData = null;
@@ -223,6 +224,7 @@ const scrapeFastBtn = document.getElementById("scrape-fast-btn");
 const scrapeDeepBtn = document.getElementById("scrape-deep-btn");
 const scrapeFullBtn = document.getElementById("scrape-full-btn");
 const cadenceStatus = document.getElementById("cadence-status");
+const cadenceElapsed = document.getElementById("cadence-elapsed");
 const resetBtn = document.getElementById("reset-btn");
 const lastUpdate = document.getElementById("last-update");
 const scoutStatus = document.getElementById("scout-status");
@@ -1781,61 +1783,94 @@ function getAgentStats(agentId) {
 }
 
 function renderAgents() {
-  agentGrid.innerHTML = "";
+  const expectedIds = new Set(agents.map((agent) => agent.id));
+  for (const card of [...agentGrid.querySelectorAll(".agent-card[data-agent-id]")]) {
+    if (!expectedIds.has(card.dataset.agentId)) {
+      card.remove();
+    }
+  }
+
   for (const agent of agents) {
     const runtime = getAgentRuntimeState(agent);
     const isWorking = runtime.label === "Working";
+    const functionKey = JSON.stringify(agent.functions);
     const functionMarkup = agent.functions.map((item) => `<li>${item}</li>`).join("");
     const stats = getAgentStats(agent.id);
     const activeBounty = getActiveBountyForAgent(agent.id);
-    const card = document.createElement("article");
-    card.className = "agent-card";
-    card.tabIndex = 0;
-    card.style.setProperty("--accent", agent.color);
-    card.innerHTML = `
-      <div class="agent-head">
-        <div>
-          <p class="agent-name">${agent.name}</p>
-          <p class="agent-role">${agent.role}</p>
-        </div>
-        <div class="agent-head-tools">
-          ${agentLoaderMarkup(agent.id, isWorking, activeBounty)}
-          <span class="pill">${agent.mood}</span>
-        </div>
-      </div>
-      <p class="agent-runtime">
-        <span class="agent-light ${runtime.lightClass}"></span>
-        <span>${runtime.label}</span>
-      </p>
-      <div class="stat-row">
-        <div class="stat">
-          <p class="label">Queue</p>
-          <p class="value">${stats.queue}</p>
-        </div>
-        <div class="stat">
-          <p class="label">Done</p>
-          <p class="value">${stats.done}</p>
-        </div>
-        <div class="stat">
-          <p class="label">Reliability</p>
-          <p class="value">${agent.reliability}%</p>
-        </div>
-      </div>
-      <div class="agent-tooltip">
-        <div class="tooltip-head">
-          <img src="${agent.face}" alt="${agent.name} face" class="tooltip-face" />
+    let card = agentGrid.querySelector(`.agent-card[data-agent-id="${agent.id}"]`);
+
+    if (!card) {
+      card = document.createElement("article");
+      card.className = "agent-card";
+      card.dataset.agentId = agent.id;
+      card.tabIndex = 0;
+      card.innerHTML = `
+        <div class="agent-head">
           <div>
-            <p class="tooltip-name">${agent.name}</p>
-            <p class="tooltip-role">${agent.role}</p>
+            <p class="agent-name" data-agent-name></p>
+            <p class="agent-role" data-agent-role></p>
+          </div>
+          <div class="agent-head-tools">
+            <div class="agent-loader-slot" data-agent-loader></div>
+            <span class="pill" data-agent-mood></span>
           </div>
         </div>
-        <p class="tooltip-title">Functions</p>
-        <ul class="tooltip-list">
-          ${functionMarkup}
-        </ul>
-      </div>
-    `;
-    agentGrid.appendChild(card);
+        <p class="agent-runtime">
+          <span class="agent-light" data-agent-light></span>
+          <span data-agent-runtime></span>
+        </p>
+        <div class="stat-row">
+          <div class="stat">
+            <p class="label">Queue</p>
+            <p class="value" data-agent-queue></p>
+          </div>
+          <div class="stat">
+            <p class="label">Done</p>
+            <p class="value" data-agent-done></p>
+          </div>
+          <div class="stat">
+            <p class="label">Reliability</p>
+            <p class="value" data-agent-reliability></p>
+          </div>
+        </div>
+        <div class="agent-tooltip">
+          <div class="tooltip-head">
+            <img src="${agent.face}" alt="${agent.name} face" class="tooltip-face" data-agent-face />
+            <div>
+              <p class="tooltip-name" data-tooltip-name></p>
+              <p class="tooltip-role" data-tooltip-role></p>
+            </div>
+          </div>
+          <p class="tooltip-title">Functions</p>
+          <ul class="tooltip-list" data-agent-functions></ul>
+        </div>
+      `;
+      agentGrid.appendChild(card);
+    }
+
+    card.style.setProperty("--accent", agent.color);
+    card.querySelector("[data-agent-name]").textContent = agent.name;
+    card.querySelector("[data-agent-role]").textContent = agent.role;
+    card.querySelector("[data-agent-loader]").innerHTML = agentLoaderMarkup(agent.id, isWorking, activeBounty);
+    card.querySelector("[data-agent-mood]").textContent = agent.mood;
+    const light = card.querySelector("[data-agent-light]");
+    light.className = `agent-light ${runtime.lightClass}`;
+    card.querySelector("[data-agent-runtime]").textContent = runtime.label;
+    card.querySelector("[data-agent-queue]").textContent = stats.queue;
+    card.querySelector("[data-agent-done]").textContent = stats.done;
+    card.querySelector("[data-agent-reliability]").textContent = `${agent.reliability}%`;
+    const face = card.querySelector("[data-agent-face]");
+    if (face.getAttribute("src") !== agent.face) {
+      face.src = agent.face;
+    }
+    face.alt = `${agent.name} face`;
+    card.querySelector("[data-tooltip-name]").textContent = agent.name;
+    card.querySelector("[data-tooltip-role]").textContent = agent.role;
+    const functionList = card.querySelector("[data-agent-functions]");
+    if (functionList.dataset.functionsKey !== functionKey) {
+      functionList.innerHTML = functionMarkup;
+      functionList.dataset.functionsKey = functionKey;
+    }
   }
 }
 
@@ -2168,7 +2203,7 @@ function renderScoutStatus() {
     setModeButtonActive(selectedCadenceMode);
   }
 
-  scrapeCadence.textContent = "Cadence: Fast 5-15m | Deep 30-60m | Full 6-24h";
+  scrapeCadence.textContent = "Intervals: Fast 5-15m | Deep 30-60m | Full 6-24h";
 
   if (!scrapeEngineRunning) {
     scrapeNext.textContent = "Next scrape: --";
@@ -3198,6 +3233,28 @@ function setCadenceButtonsEnabled() {
       ? `Selected: ${normalizeModeLabel(selectedCadenceMode)}${disabled ? " (engine running)" : ""}`
       : "Choose cadence before Start Engine.";
   }
+  renderCadenceElapsed();
+}
+
+function formatElapsedTime(ms = 0) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value) => String(value).padStart(2, "0");
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+}
+
+function renderCadenceElapsed(now = Date.now()) {
+  if (!cadenceElapsed) {
+    return;
+  }
+
+  const isCadenceOn = simRunning && scrapeEngineRunning && cadenceCycleStartedAt;
+  cadenceElapsed.classList.toggle("is-running", Boolean(isCadenceOn));
+  cadenceElapsed.textContent = isCadenceOn
+    ? `Cycle elapsed: ${formatElapsedTime(now - cadenceCycleStartedAt)}`
+    : "Cycle elapsed: idle";
 }
 
 function requiresTrackFolderForEngine() {
@@ -3227,6 +3284,7 @@ function startEngine() {
   simRunning = true;
   scrapeEngineRunning = true;
   scrapeEngineButtonFocused = true;
+  cadenceCycleStartedAt = Date.now();
   lastEngineError = "";
   startSimulationTimer();
   resetScrapeSchedule(`${normalizeModeLabel(appRunMode)} engine started`);
@@ -3242,6 +3300,7 @@ function stopEngine(reason = "Engine stopped") {
   simRunning = false;
   scrapeEngineRunning = false;
   selectedCadenceMode = null;
+  cadenceCycleStartedAt = null;
   clearScoutWorkState();
   stopSimulation();
   lastCycleAt = null;
@@ -3312,6 +3371,7 @@ function toggleScrapeEngine() {
 function resetDashboard() {
   simRunning = false;
   scrapeEngineRunning = false;
+  cadenceCycleStartedAt = null;
   clearScoutWorkState();
   stopSimulation();
   lastCycleAt = null;
@@ -3352,6 +3412,7 @@ function applyEngineMode(mode) {
 function stopAllEngines(reason = "Kill switch engaged") {
   simRunning = false;
   scrapeEngineRunning = false;
+  cadenceCycleStartedAt = null;
   clearScoutWorkState();
   stopSimulation();
   lastCycleAt = null;
@@ -3490,6 +3551,7 @@ function runScheduler() {
   }
 
   const now = Date.now();
+  renderCadenceElapsed(now);
   if (!lastCycleAt) {
     lastCycleAt = now;
   }
@@ -3630,6 +3692,8 @@ window.addEventListener("scroll", handleWindowScroll, { passive: true });
 
 window.addEventListener("beforeunload", () => {
   simRunning = false;
+  scrapeEngineRunning = false;
+  cadenceCycleStartedAt = null;
   stopSimulation();
   if (authSubscription) {
     authSubscription.unsubscribe();
