@@ -3,3 +3,4 @@
 .env.local
 .env.*.local
 BOUNTY_WORK_PACKAGES/
+output/

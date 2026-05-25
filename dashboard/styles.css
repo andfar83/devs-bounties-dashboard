@@ -720,6 +720,51 @@ h1 {
   font-weight: 700;
 }
 
+.origin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: 0.35rem;
+  padding: 0.18rem 0.46rem;
+  border: 1px solid rgba(166, 192, 214, 0.24);
+  border-radius: 999px;
+  color: #dff6ff;
+  background: rgba(7, 17, 25, 0.72);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.origin-sim {
+  border-color: rgba(166, 192, 214, 0.26);
+  color: #bed1df;
+  background: rgba(116, 139, 156, 0.16);
+}
+
+.origin-fixture {
+  border-color: rgba(255, 183, 77, 0.48);
+  color: #ffdca8;
+  background: rgba(255, 183, 77, 0.12);
+  box-shadow: 0 0 14px rgba(255, 183, 77, 0.08);
+}
+
+.origin-real {
+  border-color: rgba(57, 251, 0, 0.52);
+  color: #dfffe0;
+  background: rgba(57, 251, 0, 0.12);
+  box-shadow: 0 0 18px rgba(57, 251, 0, 0.12);
+}
+
+.origin-unknown {
+  border-color: rgba(255, 107, 107, 0.48);
+  color: #ffd7d7;
+  background: rgba(255, 107, 107, 0.12);
+}
+
 .review-meta,
 .audit-meta {
   margin: 0.2rem 0 0;
@@ -1464,6 +1509,11 @@ h1 {
   color: #a8c4d9;
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .report-grid {
@@ -1495,6 +1545,38 @@ h1 {
 
 .report-section {
   margin-top: 0.55rem;
+}
+
+.origin-disclosure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0.55rem 0 0.65rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(166, 192, 214, 0.2);
+  border-radius: 10px;
+  background: rgba(5, 13, 20, 0.42);
+  color: #cde6f8;
+  font-size: 0.78rem;
+}
+
+.origin-disclosure strong {
+  color: #f0fbff;
+}
+
+.origin-disclosure code {
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: 999px;
+  padding: 0.16rem 0.38rem;
+  color: #a8dfff;
+  background: rgba(7, 17, 25, 0.72);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.report-origin-grid .report-kpi {
+  background: rgba(6, 15, 24, 0.42);
 }
 
 .report-section h3 {

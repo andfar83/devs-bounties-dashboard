@@ -59,6 +59,24 @@ Local project folders are still created by the browser after the operator connec
 
 The scrape engine writes metadata and events. The dashboard/operator decides when a work package folder is created.
 
+## Supabase Factory Reset Before Production Intake
+
+Use this only when you want to clear test/simulation/fixture runtime data for the configured `SUPABASE_TARGET_USER_ID` while keeping schema, Auth users, profiles, RLS policies, grants, and buckets intact.
+
+Preview what would be cleared:
+
+```powershell
+node .\reset-supabase-factory.mjs
+```
+
+Create a local backup in `output/` and delete runtime rows:
+
+```powershell
+node .\reset-supabase-factory.mjs --confirm
+```
+
+The reset clears app runtime tables such as candidates, scrape runs, intake queue, agent decisions, quality gates, failures, cooperation events, work packages, artifacts metadata, source state, agent knowledge, and agent memory. It does not delete `auth.users`, `user_profiles`, `user_comments`, table definitions, policies, or the `bounty-artifacts` bucket.
+
 ## Pre-Scraper Intelligence Layer
 
 The runner and dashboard share these preflight concepts:
