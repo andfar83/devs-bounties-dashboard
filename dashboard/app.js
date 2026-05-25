@@ -2049,18 +2049,28 @@ function renderControlTower() {
 function reviewActionButtons(record) {
   if (record.nextAction === "monitor") {
     return `
-      <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" type="button">Evaluate</button>
-      <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" type="button">Package</button>
-      <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" type="button">Reject</button>
+      <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" title="Move this candidate into Feasibility review." type="button">Evaluate</button>
+      <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" title="Prepare a local work package for this candidate." type="button">Package</button>
+      <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" title="Remove this candidate from the review queue." type="button">Reject</button>
     `;
   }
 
   return `
-    <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" type="button">Reject</button>
-    <button class="btn btn-secondary btn-mini" data-review-action="monitor" data-bounty-id="${record.id}" type="button">Monitor</button>
-    <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" type="button">Evaluate</button>
-    <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" type="button">Package</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="reject" data-bounty-id="${record.id}" title="Remove this candidate from the review queue." type="button">Reject</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="monitor" data-bounty-id="${record.id}" title="Keep this candidate parked in review without approving it yet." type="button">Monitor</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="evaluate" data-bounty-id="${record.id}" title="Move this candidate into Feasibility review." type="button">Evaluate</button>
+    <button class="btn btn-secondary btn-mini" data-review-action="package" data-bounty-id="${record.id}" title="Prepare a local work package for this candidate." type="button">Package</button>
   `;
+}
+
+function reviewActionSummary(record) {
+  if (record.nextAction === "monitor") {
+    return { label: "Monitoring", text: "Parked for later. It stays here until Evaluate, Package, or Reject." };
+  }
+  if (record.packageStatus === "folder_needed") {
+    return { label: "Folder Needed", text: "Package requested. Connect Track Folder to create files." };
+  }
+  return { label: "Pending", text: "Choose one action: Monitor, Evaluate, Package, or Reject." };
 }
 
 function renderCandidateReviewQueue() {
@@ -2086,11 +2096,13 @@ function renderCandidateReviewQueue() {
       const scoreTotal = record.scores
         ? Object.values(record.scores).reduce((sum, value) => sum + Number(value || 0), 0)
         : 0;
+      const actionSummary = reviewActionSummary(record);
       return `
         <article class="review-card">
           <div>
             <p class="review-title">${record.id} - ${record.title} ${originBadgeMarkup(record)}</p>
             <p class="review-meta">${record.site} | ${record.type} | ${fmtMoney(record.price)} | due ${formatDate(record.dueDate)}</p>
+            <p class="review-state"><span>${actionSummary.label}</span>${actionSummary.text}</p>
           </div>
           <div class="review-score">
             <span>Score</span>
@@ -3455,11 +3467,12 @@ function monitorCandidate(record) {
 
 function evaluateCandidate(record) {
   const previousStage = record.stage;
-  if (!applyStageGate(record, previousStage, "scout") || !applyStageGate(record, BOUNTY_STAGES.SHORTLISTED, "feasibility")) {
+  if (!applyStageGate(record, previousStage, "scout")) {
     return;
   }
   record.stage = BOUNTY_STAGES.SHORTLISTED;
-  record.nextAction = "evaluate_now";
+  record.nextAction = "feasibility_review";
+  record.packageStatus = record.packageStatus || "";
   void persistBountyCandidate(record);
   void persistAgentEvent({
     record,
@@ -3478,25 +3491,36 @@ function evaluateCandidate(record) {
       payload: { scores: record.scores, red_flags: record.redFlags || [] }
     })
   );
-  trackPipelinePackage(record, "Prepared approved bounty package");
 }
 
-function packageCandidate(record) {
-  record.nextAction = "package_only";
+async function packageCandidate(record) {
+  const previousStage = record.stage;
+  if (record.stage === BOUNTY_STAGES.DISCOVERED && !applyStageGate(record, previousStage, "scout")) {
+    return;
+  }
+
+  if (stageRank[record.stage] < stageRank.shortlisted) {
+    record.stage = BOUNTY_STAGES.SHORTLISTED;
+  }
+  record.nextAction = "package_requested";
   record.packageStatus = trackDirHandle ? record.packageStatus || "pending" : "folder_needed";
-  void persistBountyCandidate(record);
-  void writeWorkPackage(record, "Prepared manual candidate package");
-  void persistAgentEvent({
+  await persistBountyCandidate(record);
+  if (!trackDirHandle) {
+    trackStatus.textContent = `Connect Track Folder to create package for ${record.id}.`;
+  } else {
+    await writeWorkPackage(record, "Prepared manual candidate package");
+  }
+  await persistAgentEvent({
     record,
     agentId: "ops",
     action: "package_requested",
-    fromStage: record.stage,
+    fromStage: previousStage,
     toStage: record.stage,
     reason: "Operator requested work package"
   });
 }
 
-function handleReviewAction(action, bountyId) {
+async function handleReviewAction(action, bountyId) {
   const record = bountyRecords.find((item) => item.id === bountyId);
   if (!record) {
     return;
@@ -3509,7 +3533,7 @@ function handleReviewAction(action, bountyId) {
   } else if (action === "evaluate") {
     evaluateCandidate(record);
   } else if (action === "package") {
-    packageCandidate(record);
+    await packageCandidate(record);
   }
 
   renderAll();
@@ -3597,7 +3621,10 @@ if (reviewQueue) {
     if (!btn) {
       return;
     }
-    handleReviewAction(btn.dataset.reviewAction, btn.dataset.bountyId);
+    btn.disabled = true;
+    void handleReviewAction(btn.dataset.reviewAction, btn.dataset.bountyId).finally(() => {
+      btn.disabled = false;
+    });
   });
 }
 scrapeEngineBtn.addEventListener("click", toggleScrapeEngine);

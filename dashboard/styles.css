@@ -819,6 +819,26 @@ h1 {
   margin: 0.2rem 0 0;
 }
 
+.review-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin: 0.38rem 0 0;
+  color: #a8c4d9;
+  font-size: 0.75rem;
+}
+
+.review-state span {
+  border: 1px solid rgba(57, 251, 0, 0.32);
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  color: #d9ffd2;
+  background: rgba(57, 251, 0, 0.08);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+}
+
 .review-score {
   border: 1px solid rgba(166, 192, 214, 0.18);
   border-radius: 7px;
