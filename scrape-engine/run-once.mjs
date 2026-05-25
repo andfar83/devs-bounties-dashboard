@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 
 import {
   agentDecisionRow,
@@ -12,6 +11,12 @@ import {
   scrapeIntakeQueueRow,
   scrapeRunRow
 } from "./lib/contracts.mjs";
+import {
+  assertInputWriteAllowed,
+  assertSourceWriteAllowed,
+  loadAdapterCandidates,
+  MANUAL_FIXTURE_SOURCE_KEY
+} from "./lib/input-adapter.mjs";
 
 const DEFAULT_ENV_FILE = ".env.local";
 
@@ -124,11 +129,12 @@ async function main() {
   await loadEnvFile(env("SCRAPE_ENV_FILE", DEFAULT_ENV_FILE));
 
   const appMode = env("SCRAPE_ENGINE_MODE", "shadow_real");
-  const sourceKey = env("SCRAPE_SOURCE_KEY", "manual_fixture");
+  const sourceKey = env("SCRAPE_SOURCE_KEY", MANUAL_FIXTURE_SOURCE_KEY);
   const userId = requireEnv("SUPABASE_TARGET_USER_ID");
   const dryRun = boolEnv("SCRAPE_DRY_RUN", true);
   const mode = env("SCRAPE_MODE", "fast");
-  const inputFile = resolve(env("SCRAPE_INPUT_FILE", "./fixtures/sample-candidates.json"));
+  const adapter = env("SCRAPE_ADAPTER", "file");
+  const inputFile = env("SCRAPE_INPUT_FILE", "./fixtures/sample-candidates.json");
   const maxCandidates = Number(env("SCRAPE_MAX_CANDIDATES", "25"));
   const maxConsecutiveErrors = Number(env("SCRAPE_MAX_CONSECUTIVE_ERRORS", "3"));
 
@@ -138,6 +144,16 @@ async function main() {
   if (appMode === "live_real" && !boolEnv("ALLOW_LIVE_REAL", false)) {
     throw new Error("live_real is blocked until ALLOW_LIVE_REAL=true is set explicitly.");
   }
+  assertSourceWriteAllowed({
+    sourceKey,
+    dryRun,
+    allowManualFixtureWrite: boolEnv("ALLOW_MANUAL_FIXTURE_WRITE", false)
+  });
+  assertInputWriteAllowed({
+    inputFile,
+    dryRun,
+    allowFixtureInputWrite: boolEnv("ALLOW_FIXTURE_INPUT_WRITE", false)
+  });
 
   let sourceState = null;
   if (!dryRun) {
@@ -145,7 +161,8 @@ async function main() {
     assertSourceAllowed(sourceState, { maxConsecutiveErrors });
   }
 
-  const rawCandidates = JSON.parse(await readFile(inputFile, "utf8")).slice(0, maxCandidates);
+  const adapterResult = await loadAdapterCandidates({ adapter, inputFile, maxCandidates });
+  const rawCandidates = adapterResult.candidates;
   const candidates = rawCandidates.map((candidate) => normalizeCandidate(candidate, { userId, appMode, sourceKey }));
   const acceptedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed !== false);
   const rejectedCandidates = candidates.filter((candidate) => candidate.metadata?.quality_gate?.passed === false);
@@ -163,6 +180,8 @@ async function main() {
           dryRun,
           appMode,
           sourceKey,
+          adapter: adapterResult.adapter,
+          inputFile: adapterResult.inputFile,
           count: candidates.length,
           accepted: acceptedCandidates.length,
           rejected: rejectedCandidates.length,
@@ -243,6 +262,8 @@ async function main() {
           rejected_count: rejectedCandidates.length,
           metadata: {
             runner: "scrape-engine/run-once.mjs",
+            adapter: adapterResult.adapter,
+            input_file: adapterResult.inputFile,
             quality_gates: {
               accepted: acceptedCandidates.length,
               rejected: rejectedCandidates.length

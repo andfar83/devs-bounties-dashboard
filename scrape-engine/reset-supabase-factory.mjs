@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const DEFAULT_ENV_FILE = resolve(__dirname, ".env.local");
 const CONFIRM_FLAG = "--confirm";
+const INCLUDE_KNOWLEDGE_FLAG = "--include-knowledge";
 
 const runtimeTables = [
   "scrape_intake_queue",
@@ -20,7 +21,6 @@ const runtimeTables = [
   "work_packages",
   "scrape_source_state",
   "agent_memory",
-  "agent_knowledge",
   "scrape_runs",
   "bounty_candidates"
 ];
@@ -114,6 +114,8 @@ async function countTable(rest, userId, table) {
 async function main() {
   await loadEnvFile(process.env.SCRAPE_ENV_FILE || DEFAULT_ENV_FILE);
   const confirmed = process.argv.includes(CONFIRM_FLAG);
+  const includeKnowledge = process.argv.includes(INCLUDE_KNOWLEDGE_FLAG);
+  const tablesToReset = includeKnowledge ? [...runtimeTables, "agent_knowledge"] : runtimeTables;
   const { userId, rest, listStorage } = createClient();
 
   const snapshot = {
@@ -123,7 +125,7 @@ async function main() {
   };
   const before = {};
 
-  for (const table of runtimeTables) {
+  for (const table of tablesToReset) {
     const rows = await fetchRows(rest, userId, table);
     snapshot.tables[table] = rows;
     before[table] = rows.length;
@@ -140,6 +142,7 @@ async function main() {
           message: `No rows deleted. Re-run with ${CONFIRM_FLAG} to create a backup and reset runtime data.`,
           targetUser: `${userId.slice(0, 8)}...`,
           counts: before,
+          preserved: includeKnowledge ? [] : ["agent_knowledge"],
           storage: {
             bucket: "bounty-artifacts",
             userPrefixCount: storageUserPrefix.length,
@@ -159,7 +162,7 @@ async function main() {
   await writeFile(backupPath, JSON.stringify(snapshot, null, 2), "utf8");
 
   const deleted = {};
-  for (const table of runtimeTables) {
+  for (const table of tablesToReset) {
     if (before[table] === 0) {
       deleted[table] = 0;
       continue;
@@ -172,7 +175,7 @@ async function main() {
   }
 
   const after = {};
-  for (const table of runtimeTables) {
+  for (const table of tablesToReset) {
     after[table] = await countTable(rest, userId, table);
   }
 
@@ -185,6 +188,7 @@ async function main() {
         before,
         deleted,
         after,
+        preserved: includeKnowledge ? [] : ["agent_knowledge"],
         storage: {
           bucket: "bounty-artifacts",
           userPrefixCount: storageUserPrefix.length,
