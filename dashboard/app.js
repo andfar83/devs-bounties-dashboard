@@ -88,9 +88,9 @@ const initialAgents = [
     role: "Scout Agent",
     face: "./assets/faces/atlas.svg",
     functions: [
-      "Scans bounty platforms and filters high-trust opportunities",
-      "Ranks opportunities by fit, payout quality, and deadline feasibility",
-      "Feeds qualified leads into the feasibility queue"
+      "Extracts official bounty pages, rewards, scope, and source evidence",
+      "Ranks opportunities by fit, payout quality, deadline feasibility, and platform trust",
+      "Rejects weak sources and feeds verified leads into Prism"
     ],
     color: "#2ec4b6",
     mood: "Standby",
@@ -104,9 +104,9 @@ const initialAgents = [
     role: "Feasibility Agent",
     face: "./assets/faces/prism.svg",
     functions: [
-      "Runs go/no-go analysis with risk and effort scoring",
-      "Defines acceptance criteria and execution boundaries",
-      "Escalates blockers and rejects low-EV opportunities"
+      "Maps rules, scope, allowed assets, prohibited activity, KYC, and PoC requirements",
+      "Builds go/no-go decisions with risk, effort, acceptance criteria, and economic gates",
+      "Routes only free/open-source executable research plans to Forge"
     ],
     color: "#ff9f1c",
     mood: "Standby",
@@ -120,9 +120,9 @@ const initialAgents = [
     role: "Builder Agent",
     face: "./assets/faces/forge.svg",
     functions: [
-      "Implements technical solutions and experiment loops",
-      "Benchmarks outputs against baseline and target metrics",
-      "Packages reproducible artifacts for submission"
+      "Prepares OSS-powered research plans using Foundry, Hardhat, Slither, Echidna, Semgrep, and native tests",
+      "Designs reproducible PoC, patch, benchmark, and no-go evidence workflows",
+      "Packages real execution artifacts for Sentinel review"
     ],
     color: "#39fb00",
     mood: "Standby",
@@ -136,9 +136,9 @@ const initialAgents = [
     role: "Ops Agent",
     face: "./assets/faces/sentinel.svg",
     functions: [
-      "Manages deadlines, submission packets, and confirmations",
-      "Monitors reviewer feedback and response windows",
-      "Tracks payout workflows and post-submit reliability"
+      "Audits scope, evidence integrity, responsible disclosure, and submission readiness",
+      "Blocks unsafe or unsupported reports before external submission",
+      "Tracks reviewer follow-up, confirmation IDs, payout workflow, and lessons learned"
     ],
     color: "#ff6b6b",
     mood: "Standby",
@@ -175,7 +175,7 @@ const autoHandoffInFlightIds = new Set();
 let handoffTimer = null;
 let solvedBounties = [];
 const agentWorkStartedAt = new Map();
-let appRunMode = APP_MODE.SIMULATION;
+let appRunMode = APP_MODE.SHADOW_REAL;
 let auditEvents = [];
 let scrapeRunHistory = [];
 let lastEngineError = "";
@@ -1325,6 +1325,9 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
         appMode: appRunMode,
         sourceKey: row?.metadata?.source || SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY
       });
+      if (isLegacyRuntimeRecord(incoming)) {
+        continue;
+      }
       const result = upsertRemoteBountyRecord(incoming);
       if (result === "created") {
         createdCount += 1;
@@ -1394,7 +1397,9 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
 
 function runScrapeCycle(mode) {
   if (appRunMode === APP_MODE.SIMULATION) {
-    runScrapeMode(mode);
+    lastEngineError = "Simulation mode is disabled for production operation.";
+    scrapeSchedule.lastRunMode = "Simulation disabled";
+    renderAll();
     return;
   }
   void loadShadowRealSnapshot(mode);
@@ -2054,6 +2059,11 @@ function classifyBountyOrigin(record = {}) {
   };
 }
 
+function isLegacyRuntimeRecord(record = {}) {
+  const origin = classifyBountyOrigin(record);
+  return origin.label === "Simulation" || origin.label === "Fixture";
+}
+
 function originBadgeMarkup(record) {
   const origin = classifyBountyOrigin(record);
   return `<span class="origin-badge ${origin.className}" title="${escapeHtml(origin.description)}">${escapeHtml(origin.label)}</span>`;
@@ -2549,7 +2559,7 @@ function renderWorkPackageCenter() {
           <td>${record.stage}</td>
           <td><span class="status ${folderStatus === "tracked" ? "status-ready" : "status-review"}">${statusText(folderStatus)}</span></td>
           <td><span class="status ${syncStatus === "failed" ? "status-blocked" : "status-ready"}">${statusText(syncStatus)}</span></td>
-          <td>13 files</td>
+          <td>${Object.keys(WORK_PACKAGE_FILES).length} files</td>
           <td>${lastEvent ? `${lastEvent.agentId}: ${statusText(lastEvent.action)}` : "--"}</td>
           <td>${statusText(nextAction)}</td>
           <td><div class="row-actions">${packageActionButtons(record)}</div></td>
@@ -2683,15 +2693,15 @@ function buildReportDataset() {
       if (origin.isRealScrape) {
         counts.real += 1;
       } else if (origin.label === "Fixture") {
-        counts.fixture += 1;
+        counts.legacyExcluded += 1;
       } else if (origin.label === "Simulation") {
-        counts.simulation += 1;
+        counts.legacyExcluded += 1;
       } else {
         counts.unverified += 1;
       }
       return counts;
     },
-    { real: 0, fixture: 0, simulation: 0, unverified: 0 }
+    { real: 0, legacyExcluded: 0, unverified: 0 }
   );
   const openValue = bountyRecords.filter((r) => stageRank[r.stage] < stageRank.won).reduce((sum, r) => sum + r.price, 0);
   const avgTicket = bountyRecords.length
@@ -2766,11 +2776,11 @@ function reportToSheetRows(reportData) {
     ...kpis.map(([label, value], index) => {
       const row = [label, value, kpiReadouts[label] || "", "", "", "", "", "", ""];
       if (index === 0) {
-        row[4] = "Readable funding snapshot: scan KPI health first, then review origin columns before trusting business totals. Simulation and fixture rows are test data.";
+        row[4] = "Readable funding snapshot: scan KPI health first, then review origin columns before trusting business totals. Non-production records are excluded from production intake.";
       }
       if (index === 5) {
         row[4] = "Legend\nGreen = paid/won\nGold = active/open\nRed = overdue risk";
-        row[7] = `Origin mix\nReal: ${reportData.kpis.originCounts.real}\nFixture: ${reportData.kpis.originCounts.fixture}\nSim: ${reportData.kpis.originCounts.simulation}`;
+        row[7] = `Origin mix\nReal: ${reportData.kpis.originCounts.real}\nUnverified: ${reportData.kpis.originCounts.unverified}`;
       }
       return row;
     }),
@@ -3125,9 +3135,8 @@ function renderReport() {
     </div>
     <div class="report-grid report-origin-grid">
       <div class="report-kpi"><p class="kpi-label">Real Scrape</p><p class="kpi-value">${originCounts.real}</p></div>
-      <div class="report-kpi"><p class="kpi-label">Fixture</p><p class="kpi-value">${originCounts.fixture}</p></div>
-      <div class="report-kpi"><p class="kpi-label">Simulation</p><p class="kpi-value">${originCounts.simulation}</p></div>
       <div class="report-kpi"><p class="kpi-label">Unverified</p><p class="kpi-value">${originCounts.unverified}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Legacy Excluded</p><p class="kpi-value">${originCounts.legacyExcluded}</p></div>
     </div>
     <div class="report-section">
       <h3>Bounty Detail</h3>
@@ -3954,6 +3963,12 @@ function resetDashboard() {
 
 function applyEngineMode(mode) {
   if (!Object.values(APP_MODE).includes(mode)) {
+    return;
+  }
+  if (mode === APP_MODE.SIMULATION) {
+    lastEngineError = "Simulation mode is disabled. Use Shadow Real for real scrape intake.";
+    scrapeSchedule.lastRunMode = "Mode change blocked (simulation disabled)";
+    renderAll();
     return;
   }
 

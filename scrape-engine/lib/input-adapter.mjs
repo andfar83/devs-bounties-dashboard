@@ -316,6 +316,7 @@ async function enrichCandidateFromDetailPage(candidate, source) {
       title: detail.title || candidate.title,
       description: detail.overview || candidate.description,
       scope: detail.scopeSummary || candidate.scope,
+      fixRequired: detail.problemStatement || candidate.fixRequired,
       price: payoutUsd,
       confidence: hasPayout ? Math.max(Number(candidate.confidence || 0), 0.82) : candidate.confidence,
       nextAction: hasPayout && payoutUsd >= 10000 ? "evaluate_now" : candidate.nextAction,
@@ -342,7 +343,17 @@ async function enrichCandidateFromDetailPage(candidate, source) {
         vault_program: detail.vaultProgram,
         ongoing_program: true,
         program_tags: detail.tags,
-        extracted_from_rewards_anchor: true
+        extracted_from_rewards_anchor: true,
+        source_evidence: {
+          official_source: true,
+          source_url: candidate.siteUrl,
+          scraped_at: new Date().toISOString(),
+          title: detail.title || candidate.title,
+          problem_statement: detail.problemStatement || detail.overview || "",
+          rewards_excerpt: detail.rewardsExcerpt || "",
+          scope_excerpt: detail.scopeSummary || "",
+          html_excerpt: detail.textExcerpt || ""
+        }
       }
     };
   } catch (error) {
@@ -372,6 +383,9 @@ function extractImmunefiProgramDetail(html) {
   const overview = firstMatch(text, /Program Overview\s+([\s\S]+?)(?:\s+Audits\s+|\s+KYC required\s+|\s+Proof of Concept\s+)/i);
   const rewardsBody = firstMatch(text, /Rewards\s+([\s\S]+?)(?:\s+View impacts in scope|\s+Program Overview\s+)/i);
   const rewardRanges = extractRewardRanges(text);
+  const problemStatement = overview
+    ? `Investigate this official Immunefi program for valid, in-scope security impact. ${overview.trim().slice(0, 900)}`
+    : "Investigate this official Immunefi program for valid, in-scope security impact according to the source page.";
 
   return {
     title: title ? title.trim() : "",
@@ -380,12 +394,15 @@ function extractImmunefiProgramDetail(html) {
     liveSince: liveSince ? liveSince.trim() : "",
     lastUpdated: lastUpdated ? lastUpdated.trim() : "",
     overview: overview ? overview.trim().slice(0, 1800) : "",
+    problemStatement,
     scopeSummary: rewardsBody ? `Rewards and scope extracted from Immunefi. ${rewardsBody.trim().slice(0, 1200)}` : "",
+    rewardsExcerpt: rewardsBody ? rewardsBody.trim().slice(0, 1500) : "",
     rewardRanges,
     kycRequired: /KYC required/i.test(text),
     pocRequired: /PoC Required|Proof of Concept\s+Proof of concept is always required/i.test(text),
     vaultProgram: /Vault program|Immunefi vault program/i.test(text),
-    tags: extractProgramTags(text)
+    tags: extractProgramTags(text),
+    textExcerpt: text.slice(0, 3500)
   };
 }
 

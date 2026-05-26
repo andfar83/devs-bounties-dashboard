@@ -7,7 +7,13 @@ import {
   STORAGE_BUCKETS,
   WORK_PACKAGE_FILES
 } from "./config.js";
-import { AGENT_DECISION_CONTRACTS, QUALITY_GATES } from "./agent-intelligence.js";
+import {
+  AGENT_DECISION_CONTRACTS,
+  AGENT_KNOWLEDGE_PACKS,
+  AGENT_TOOLBELTS,
+  OPEN_SOURCE_KNOWLEDGE_SOURCES,
+  QUALITY_GATES
+} from "./agent-intelligence.js";
 
 export const CONTRACT_VERSION = "2026-05-22.v1";
 
@@ -46,8 +52,8 @@ export function toBountyCandidate(record, userId = null) {
     confidence: record.confidence ?? null,
     metadata: {
       ...(record.metadata || {}),
-      app_mode: record.appRunMode || APP_MODE.SIMULATION,
-      source: record.metadata?.source || "dashboard-sim",
+      app_mode: record.appRunMode || APP_MODE.SHADOW_REAL,
+      source: record.metadata?.source || "operator_intake",
       quality_gate: record.qualityGate || null,
       agent_decision: record.agentDecision || null
     }
@@ -90,7 +96,7 @@ export function toScrapeRun({ mode, status = RUN_STATUS.RUNNING, userId = null, 
     contract_version: CONTRACT_VERSION,
     user_id: userId,
     source_key: stats.source_key || null,
-    app_mode: stats.app_mode || APP_MODE.SIMULATION,
+    app_mode: stats.app_mode || APP_MODE.SHADOW_REAL,
     mode,
     status,
     started_at: stats.started_at || nowIso(),
@@ -116,7 +122,7 @@ export function toAgentEvent({ record, agentId, action, fromStage = null, toStag
     reason,
     created_at: nowIso(),
     metadata: {
-      app_mode: record?.appRunMode || APP_MODE.SIMULATION
+      app_mode: record?.appRunMode || APP_MODE.SHADOW_REAL
     }
   };
 }
@@ -133,7 +139,7 @@ export function toWorkPackage(record, userId = null, folderPath = "") {
     created_at: nowIso(),
     updated_at: nowIso(),
     metadata: {
-      app_mode: record.appRunMode || APP_MODE.SIMULATION
+      app_mode: record.appRunMode || APP_MODE.SHADOW_REAL
     }
   };
 }
@@ -148,6 +154,7 @@ export function toWorkArtifacts(record, userId = null) {
 
   return [
     { ...base, artifact_type: ARTIFACT_TYPES.SOURCE, relative_path: WORK_PACKAGE_FILES.SOURCE_JSON },
+    { ...base, artifact_type: ARTIFACT_TYPES.SOURCE, relative_path: WORK_PACKAGE_FILES.SOURCE_EVIDENCE },
     { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.RULES_MD },
     { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.AGENT_CONTRACTS },
     { ...base, artifact_type: ARTIFACT_TYPES.RULES, relative_path: WORK_PACKAGE_FILES.QUALITY_GATES },
@@ -205,6 +212,47 @@ See risk_register.json.
 5. Package for Ops review before any Immunefi submission.
 `;
 
+  const sourceEvidence = `# Source Evidence - ${record.id}
+
+## Official Source
+- Platform: ${record.site}
+- Source URL: ${record.siteUrl}
+- Retrieved At: ${candidate.retrieved_at}
+- Intake Source: ${record.metadata?.source || record.metadata?.web_source_key || "unknown"}
+- Adapter: ${record.metadata?.intake_adapter || record.metadata?.adapter_strategy || "unknown"}
+- Official Source Verified: ${record.metadata?.source_evidence?.official_source ? "yes" : "pending operator verification"}
+
+## Extracted Problem Statement
+${record.metadata?.source_evidence?.problem_statement || record.description || "No description extracted yet. Re-open the source URL before execution."}
+
+## Extracted Scope / Rewards
+${record.metadata?.source_evidence?.scope_excerpt || record.scope || "Scope not extracted yet. Operator/agent must verify scope directly from the source page."}
+
+## Reward Ranges
+${rewardSummary}
+
+## Source Page Excerpt
+${record.metadata?.source_evidence?.html_excerpt || "Raw source excerpt not attached yet. Re-run scraper with detail enrichment if needed."}
+
+## Program Signals
+- KYC Required: ${record.metadata?.kyc_required ? "yes" : "not detected"}
+- PoC Required: ${record.metadata?.poc_required ? "yes" : "not detected"}
+- Vault Program: ${record.metadata?.vault_program ? "yes" : "not detected"}
+- Ongoing Program: ${record.metadata?.ongoing_program ? "yes" : "unknown"}
+- Tags: ${Array.isArray(record.metadata?.program_tags) && record.metadata.program_tags.length ? record.metadata.program_tags.join(", ") : "none extracted"}
+
+## Agent Knowledge Sources
+${OPEN_SOURCE_KNOWLEDGE_SOURCES.map((source) => `- ${source.label} (${source.license}) - ${source.url}`).join("\n")}
+
+## Agent Toolbelts
+${Object.entries(AGENT_TOOLBELTS)
+  .map(([agentId, tools]) => `- ${agentId}: ${tools.join(", ")}`)
+  .join("\n")}
+
+## Agent Superpowers
+${AGENT_KNOWLEDGE_PACKS.map((pack) => `- ${pack.agentId}: ${pack.capabilities.join(", ")}`).join("\n")}
+`;
+
   const effortEstimate = {
     optimistic_hours: null,
     realistic_hours: null,
@@ -237,7 +285,7 @@ See risk_register.json.
       impact: "high",
       owner: AGENT_IDS.OPS,
       trigger: "KYC, PoC, vault, safe harbor, or prohibited-activity requirements apply.",
-      mitigation: "Keep all testing in allowed local forks/test environments and prepare inline PoC evidence.",
+      mitigation: "Keep all research inside program-approved local forks, sandboxes, or testnets and prepare inline PoC evidence.",
       contingency: "Do not submit until Sentinel confirms compliance."
     }
   ];
@@ -246,6 +294,10 @@ See risk_register.json.
     {
       path: WORK_PACKAGE_FILES.SOURCE_JSON,
       content: JSON.stringify(candidate, null, 2)
+    },
+    {
+      path: WORK_PACKAGE_FILES.SOURCE_EVIDENCE,
+      content: sourceEvidence
     },
     {
       path: WORK_PACKAGE_FILES.RULES_MD,
@@ -271,12 +323,12 @@ This file is generated from the real scrape detail page when available. Review I
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Source Capture Placeholder - ${record.id}</title>
+    <title>Source Capture - ${record.id}</title>
   </head>
   <body>
-    <h1>Source capture pending</h1>
-    <p>This file is a placeholder generated by the dashboard package writer.</p>
-    <p>The real scrape engine should store the raw retrieved bounty detail page here when page capture is enabled.</p>
+    <h1>Source capture pending real engine attachment</h1>
+    <p>The dashboard recorded the bounty source URL, but raw page capture has not been attached yet.</p>
+    <p>When the scrape engine exports captured HTML, this file is replaced with the retrieved bounty detail page.</p>
     <p><strong>Source URL:</strong> <a href="${record.siteUrl}">${record.siteUrl}</a></p>
   </body>
 </html>
@@ -310,7 +362,7 @@ This file is generated from the real scrape detail page when available. Review I
       path: WORK_PACKAGE_FILES.SOLUTION_README,
       content: `# Solution - ${record.id}
 
-Status: not started
+Status: pending real agent execution
 
 ## Challenge
 ${record.title}
@@ -322,10 +374,10 @@ $${Number(record.price || 0).toLocaleString("en-US")}
 Builder must not invent a vulnerability. Start by validating scope, selecting a permitted asset, and building a reproducible local proof only if a real issue is found.
 
 ## Implementation Notes
-Add solution notes here once Builder starts execution.
+Waiting for Builder execution output from the agent runtime.
 
 ## Important
-This is a prepared work package, not a solved bounty. Treat it as solved only after a reproducible issue, evidence, and operator validation are recorded.
+This is a prepared work package. Treat it as solved only after a reproducible issue, evidence, and operator validation are recorded.
 `
     },
     {
@@ -333,28 +385,28 @@ This is a prepared work package, not a solved bounty. Treat it as solved only af
       content: `# Reproduction - ${record.id}
 
 ## Environment
-- OS: unknown
-- Runtime: unknown
-- Dependencies: unknown
+- OS: pending agent capture
+- Runtime: pending agent capture
+- Dependencies: pending agent capture
 
 ## Steps
-1. Add baseline setup command.
-2. Add validation command.
-3. Add expected output.
+1. Capture baseline setup command.
+2. Capture reproduction or validation command.
+3. Capture expected and actual output.
 `
     },
     {
       path: WORK_PACKAGE_FILES.RESULTS,
       content: `# Results - ${record.id}
 
-No benchmark results recorded yet.
+Pending real execution results from Builder.
 `
     },
     {
       path: WORK_PACKAGE_FILES.PATCH,
-      content: `# Patch placeholder for ${record.id}
+      content: `# Patch / PoC Diff - ${record.id}
 
-No patch has been generated yet.
+Pending real Builder output.
 
 This file should contain a real diff only after Builder confirms a valid issue and produces a reproducible fix or PoC.
 `
@@ -376,7 +428,7 @@ This file should contain a real diff only after Builder confirms a valid issue a
       path: WORK_PACKAGE_FILES.SUBMISSION_LOG,
       content: `# Submission Log - ${record.id}
 
-No submission actions recorded yet.
+No external submission actions recorded yet.
 `
     },
     {

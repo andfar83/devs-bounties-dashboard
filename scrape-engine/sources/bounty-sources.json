@@ -10,7 +10,35 @@
       "defaultConfidence": 0.72,
       "platformTrust": 9,
       "enrichDetailPages": true,
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "program_detail_url",
+        "maximum_bounty_usd",
+        "reward_ranges",
+        "program_overview",
+        "kyc_required",
+        "poc_required",
+        "vault_program",
+        "program_tags"
+      ],
       "enabled": true
     }
-  ]
+  ],
+  "trustedKnowledgePolicy": {
+    "allowedCost": "free_or_open_source_first",
+    "sourcePriority": [
+      "official_platform_pages",
+      "official_project_repositories",
+      "official_protocol_docs",
+      "owasp_guides",
+      "open_source_security_tools"
+    ],
+    "blocked": [
+      "paywalled_data_as_required_dependency",
+      "unverified_social_media_claims",
+      "exploit_marketplaces",
+      "private_or_leaked_data"
+    ]
+  }
 }

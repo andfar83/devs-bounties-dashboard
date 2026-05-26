@@ -80,6 +80,7 @@ export const LOCAL_PACKAGE_FOLDERS = {
 
 export const WORK_PACKAGE_FILES = {
   SOURCE_JSON: "challenge/source.json",
+  SOURCE_EVIDENCE: "challenge/source-evidence.md",
   RULES_MD: "challenge/rules.md",
   RETRIEVED_PAGE_HTML: "challenge/retrieved-page.html",
   AGENT_CONTRACTS: "challenge/agent-contracts.json",

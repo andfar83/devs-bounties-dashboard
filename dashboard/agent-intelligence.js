@@ -1,55 +1,96 @@
-﻿export const AGENT_KNOWLEDGE_PACKS = [
+export const AGENT_KNOWLEDGE_PACKS = [
   {
     agentId: "scout",
     name: "Atlas Scout Knowledge",
-    version: "2026-05-23.pre-scraper",
-    scope: "discovery_triage",
-    capabilities: ["source_evidence", "ev_scoring", "platform_trust", "dedupe", "watchlist_routing"],
+    version: "2026-05-26.real-intake",
+    scope: "official_discovery_triage",
+    capabilities: [
+      "official_source_discovery",
+      "source_evidence",
+      "ev_scoring",
+      "platform_trust",
+      "dedupe",
+      "watchlist_routing",
+      "reward_scope_extraction"
+    ],
     rules: [
-      "Every candidate needs a source URL and retrieval timestamp.",
+      "Every candidate needs an official source URL, retrieval timestamp, and source platform.",
+      "Prefer official bounty pages and public program directories over blogs, reposts, or search snippets.",
       "Reject ambiguous payout or suspicious organizer signals.",
       "Score fit, payout quality, deadline feasibility, win probability, strategic value, and platform trust.",
-      "Never infer missing fields silently; mark unknown explicitly."
+      "Never infer missing fields silently; mark unknown explicitly.",
+      "Capture the exact bounty page link so the operator can open the source section directly."
     ],
     kpis: ["qualified_opportunities", "shortlist_pass_rate", "false_positive_rate", "time_to_shortlist"]
   },
   {
     agentId: "feasibility",
     name: "Prism Feasibility Knowledge",
-    version: "2026-05-23.pre-scraper",
-    scope: "go_no_go_decisions",
-    capabilities: ["rules_clarity", "effort_estimation", "risk_register", "acceptance_criteria", "economic_gate"],
+    version: "2026-05-26.real-intake",
+    scope: "rules_scope_go_no_go",
+    capabilities: [
+      "rules_clarity",
+      "effort_estimation",
+      "risk_register",
+      "acceptance_criteria",
+      "economic_gate",
+      "scope_boundary_mapping",
+      "open_source_research_plan"
+    ],
     rules: [
       "No go decision without measurable acceptance criteria.",
+      "Map every opportunity to allowed assets, in-scope impacts, out-of-scope impacts, KYC, PoC, and prohibited activity.",
       "Use three-point estimates with coordination, packaging, and unknown buffers.",
       "Critical risks need mitigation and contingency.",
-      "Conditional go requires a resolvable blocker and fallback strategy."
+      "Conditional go requires a resolvable blocker and fallback strategy.",
+      "Do not pass to Builder unless the next research step can be executed with free or open-source tooling."
     ],
     kpis: ["on_time_go_rate", "estimation_error", "risk_realization_rate", "time_to_decision"]
   },
   {
     agentId: "builder",
     name: "Forge Builder Knowledge",
-    version: "2026-05-23.pre-scraper",
-    scope: "implementation_quality",
-    capabilities: ["baseline_repro", "incremental_build", "benchmarking", "artifact_packaging", "regression_control"],
+    version: "2026-05-26.real-intake",
+    scope: "oss_research_poc_and_patch",
+    capabilities: [
+      "baseline_repro",
+      "incremental_build",
+      "benchmarking",
+      "artifact_packaging",
+      "regression_control",
+      "oss_tool_orchestration",
+      "poc_design",
+      "patch_diff_generation"
+    ],
     rules: [
       "No unverifiable claims, fake benchmarks, or hidden manual steps.",
+      "Use free/open-source tools first: Foundry, Hardhat, Slither, Echidna, Semgrep, OWASP references, language-native test runners, and public repos.",
+      "Never perform unauthorized exploitation; use only program-approved local forks, testnets, sandboxes, or read-only analysis.",
       "Record baseline, environment, commands, final metrics, and variance context.",
       "Preserve a known-good path and document fallback strategy.",
-      "Submission package must pass a dry run before Ops."
+      "Submission package must pass a dry run before Ops.",
+      "If no real issue is confirmed, write no_go evidence instead of inventing a solution."
     ],
     kpis: ["quality_gate_pass_rate", "metric_uplift", "fresh_repro_success", "critical_bug_escape_rate"]
   },
   {
     agentId: "ops",
     name: "Sentinel Ops Knowledge",
-    version: "2026-05-23.pre-scraper",
-    scope: "submission_operations",
-    capabilities: ["deadline_safety", "compliance_audit", "submission_log", "reviewer_followup", "payout_closure"],
+    version: "2026-05-26.real-intake",
+    scope: "safe_submission_operations",
+    capabilities: [
+      "deadline_safety",
+      "compliance_audit",
+      "submission_log",
+      "reviewer_followup",
+      "payout_closure",
+      "evidence_integrity",
+      "responsible_disclosure_guardrails"
+    ],
     rules: [
       "Never schedule first submission close to cutoff.",
       "Capture proof of submission and confirmation IDs.",
+      "No external submission unless source page, scope, impact, PoC, evidence, and operator approval are present.",
       "Reviewer responses must be factual, concise, respectful, and evidence-linked.",
       "Every incident needs root cause, corrective action, and preventive action."
     ],
@@ -57,28 +98,93 @@
   }
 ];
 
+export const OPEN_SOURCE_KNOWLEDGE_SOURCES = [
+  {
+    key: "owasp_wstg",
+    label: "OWASP Web Security Testing Guide",
+    url: "https://owasp.org/www-project-web-security-testing-guide/",
+    license: "open/free",
+    domains: ["web", "api", "auth", "session", "input_validation"],
+    agents: ["feasibility", "builder", "ops"]
+  },
+  {
+    key: "owasp_asvs",
+    label: "OWASP Application Security Verification Standard",
+    url: "https://owasp.org/www-project-application-security-verification-standard/",
+    license: "open/free",
+    domains: ["web", "api", "secure_design"],
+    agents: ["feasibility", "builder", "ops"]
+  },
+  {
+    key: "semgrep",
+    label: "Semgrep OSS",
+    url: "https://semgrep.dev/docs/",
+    license: "open-source/free-tier",
+    domains: ["static_analysis", "multi_language"],
+    agents: ["builder"]
+  },
+  {
+    key: "slither",
+    label: "Slither Static Analyzer",
+    url: "https://github.com/crytic/slither",
+    license: "open-source",
+    domains: ["solidity", "smart_contracts", "static_analysis"],
+    agents: ["builder"]
+  },
+  {
+    key: "echidna",
+    label: "Echidna Smart Contract Fuzzer",
+    url: "https://github.com/crytic/echidna",
+    license: "open-source",
+    domains: ["solidity", "smart_contracts", "fuzzing"],
+    agents: ["builder"]
+  },
+  {
+    key: "foundry",
+    label: "Foundry Ethereum Development Toolkit",
+    url: "https://book.getfoundry.sh/",
+    license: "open-source",
+    domains: ["solidity", "ethereum", "testing", "forking"],
+    agents: ["builder"]
+  },
+  {
+    key: "hardhat",
+    label: "Hardhat Ethereum Development Environment",
+    url: "https://hardhat.org/docs",
+    license: "open-source",
+    domains: ["solidity", "ethereum", "testing"],
+    agents: ["builder"]
+  }
+];
+
+export const AGENT_TOOLBELTS = {
+  scout: ["official-platform pages", "source URL verifier", "dedupe key builder", "reward/scope extractor"],
+  feasibility: ["OWASP WSTG", "OWASP ASVS", "risk register", "three-point estimate", "go/no-go matrix"],
+  builder: ["Foundry", "Hardhat", "Slither", "Echidna", "Semgrep", "language-native tests", "git diff"],
+  ops: ["scope checklist", "evidence checklist", "submission log", "responsible disclosure review", "follow-up tracker"]
+};
 export const AGENT_DECISION_CONTRACTS = {
   scout: {
-    input: ["title", "platform", "source_url", "deadline_utc", "payout_usd", "scores", "confidence"],
-    output: ["decision", "next_action", "score", "red_flags", "evidence"],
+    input: ["title", "platform", "source_url", "retrieved_at", "deadline_utc", "payout_usd", "scores", "confidence"],
+    output: ["decision", "next_action", "score", "red_flags", "source_evidence", "reward_scope_summary"],
     allowedDecisions: ["discard", "monitor", "evaluate_now"],
     minConfidence: 0.6
   },
   feasibility: {
-    input: ["rules", "scope_statement", "deadline_utc", "scores", "risk_register"],
-    output: ["decision", "confidence", "acceptance_criteria", "risk_register", "effort_estimate"],
+    input: ["rules", "scope_statement", "deadline_utc", "scores", "risk_register", "source_evidence"],
+    output: ["decision", "confidence", "acceptance_criteria", "risk_register", "effort_estimate", "oss_research_plan"],
     allowedDecisions: ["no_go", "conditional_go", "go"],
     minConfidence: 0.7
   },
   builder: {
-    input: ["feasibility_report", "acceptance_criteria", "work_package", "baseline"],
-    output: ["implementation_status", "repro_steps", "results", "artifacts", "known_risks"],
+    input: ["feasibility_report", "acceptance_criteria", "work_package", "baseline", "oss_research_plan"],
+    output: ["implementation_status", "repro_steps", "results", "artifacts", "known_risks", "poc_or_no_go_evidence"],
     allowedDecisions: ["blocked", "in_progress", "package_ready"],
     minConfidence: 0.75
   },
   ops: {
-    input: ["submission_packet", "deadline_utc", "compliance_checklist", "proof"],
-    output: ["submission_status", "confirmation_id", "followup_plan", "payout_status"],
+    input: ["submission_packet", "deadline_utc", "compliance_checklist", "proof", "source_evidence"],
+    output: ["submission_status", "confirmation_id", "followup_plan", "payout_status", "submission_blockers"],
     allowedDecisions: ["blocked", "ready_to_submit", "submitted", "paid"],
     minConfidence: 0.8
   }
@@ -87,6 +193,7 @@ export const AGENT_DECISION_CONTRACTS = {
 export const QUALITY_GATES = {
   discovered: [
     { id: "source_url_present", label: "Source URL present", severity: "critical", test: (record) => Boolean(record.siteUrl || record.source_url) },
+    { id: "official_source_evidence", label: "Official source evidence captured", severity: "warning", test: (record) => Boolean(record.metadata?.source_evidence?.source_url || record.metadata?.detail_url || record.siteUrl || record.source_url) },
     { id: "title_present", label: "Title present", severity: "critical", test: (record) => Boolean(record.title) },
     { id: "payout_non_negative", label: "Payout is valid", severity: "critical", test: (record) => Number(record.price ?? record.payout_usd ?? 0) >= 0 },
     {
