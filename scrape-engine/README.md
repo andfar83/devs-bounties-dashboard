@@ -141,6 +141,9 @@ SCRAPE_SOURCE_KEY=immunefi_web
 SCRAPE_INPUT_FILE=./scrape-engine/sources/bounty-sources.json
 ```
 
+If the source JSON is not bundled by the deployment, the web adapter falls back to the built-in `immunefi_web` source so 
+Shadow Real keeps running instead of failing with a missing-file error.
+
 ## Folder Output
 
 Local project folders are still created by the browser after the operator connects:

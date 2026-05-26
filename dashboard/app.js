@@ -782,7 +782,14 @@ function statusText(value) {
 }
 
 function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  if (!dateStr) {
+    return "Ongoing";
+  }
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) {
+    return "Ongoing";
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 }
 
 function disclosureHtml(record) {
@@ -888,6 +895,21 @@ function agentForStage(stage) {
 }
 
 function applyStageGate(record, targetStage, agentId = agentForStage(targetStage)) {
+  if (targetStage === BOUNTY_STAGES.SUBMITTED && !isPackageReady(record)) {
+    const message = "Package folder must be tracked before Builder can move this bounty to submitted.";
+    lastEngineError = message;
+    record.packageStatus = record.packageStatus || (trackDirHandle ? "pending" : "folder_needed");
+    recordAuditEvent({
+      record,
+      agentId,
+      action: "package_not_ready",
+      fromStage: record.stage,
+      toStage: targetStage,
+      reason: message
+    });
+    return false;
+  }
+
   const gateResult = evaluateQualityGates(record, targetStage);
   record.qualityGate = gateResult;
   if (gateResult.passed) {
@@ -916,6 +938,10 @@ function applyStageGate(record, targetStage, agentId = agentForStage(targetStage
     reason: message
   });
   return false;
+}
+
+function isPackageReady(record) {
+  return Boolean(record && (trackedPackageIds.has(record.id) || record.packageStatus === "tracked" || record.packageStatus === "prepared"));
 }
 
 function recordAuditEvent({ record = null, agentId = "system", action, fromStage = null, toStage = null, reason = "" }) {
@@ -1249,10 +1275,31 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
   setModeButtonActive(mode);
   scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} scraping`;
   const startedAt = new Date(Date.now() - 1000).toISOString();
+  let engineResult = null;
+  let engineError = null;
 
   try {
-    const engineResult = await triggerServerScrape(mode);
-    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} sync`;
+    try {
+      engineResult = await triggerServerScrape(mode);
+      scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)} sync`;
+    } catch (error) {
+      engineError = error;
+      lastEngineError = `Scrape API failed: ${error.message}`;
+      scrapeSchedule.lastRunMode = "Scrape API failed, loading Supabase cache";
+      recordAuditEvent({
+        agentId: "integration",
+        action: "shadow_real_scrape_failed",
+        reason: error.message
+      });
+      void persistFailureEvent({
+        agentId: "integration",
+        failureType: "scrape_api_failure",
+        severity: "warning",
+        message: error.message,
+        recoveryAction: "load_existing_supabase_candidates",
+        metadata: { mode, endpoint: SCRAPE_ENGINE_PREFLIGHT.RUN_ENDPOINT }
+      });
+    }
 
     const { data, error } = await supabaseClient
       .from("bounty_candidates")
@@ -1286,9 +1333,12 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
     pruneBountyRecords();
     const engineCreated = Number(engineResult?.created || 0);
     const engineUpdated = Number(engineResult?.updated || 0);
-    scrapeSchedule.lastRunMode = `${normalizeModeLabel(appRunMode)}: ${createdCount} UI new / ${updatedCount} UI updated | engine ${engineCreated}/${engineUpdated}`;
+    const cacheSummary = `${createdCount} UI new / ${updatedCount} UI updated`;
+    scrapeSchedule.lastRunMode = engineError
+      ? `${normalizeModeLabel(appRunMode)} cache loaded: ${cacheSummary} | scrape API failed`
+      : `${normalizeModeLabel(appRunMode)}: ${cacheSummary} | engine ${engineCreated}/${engineUpdated}`;
     await persistScrapeRun(mode, {
-      status: "done",
+      status: engineError ? "retry" : "done",
       source_key: engineResult?.sourceKey || SCRAPE_ENGINE_PREFLIGHT.DEFAULT_SOURCE_KEY,
       started_at: startedAt,
       completed_at: new Date().toISOString(),
@@ -1296,15 +1346,19 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
       created_count: createdCount,
       updated_count: updatedCount,
       rejected_count: 0,
+      error_message: engineError?.message || "",
       metadata: {
         ingestion: "supabase_shadow_pull",
+        degraded: Boolean(engineError),
         engine_result: engineResult || null
       }
     });
     recordAuditEvent({
       agentId: "integration",
-      action: "shadow_real_sync",
-      reason: `Loaded ${createdCount} new and ${updatedCount} updated candidates from Supabase`
+      action: engineError ? "shadow_real_cache_sync" : "shadow_real_sync",
+      reason: engineError
+        ? `Scrape API failed, loaded ${createdCount} new and ${updatedCount} updated cached candidates from Supabase`
+        : `Loaded ${createdCount} new and ${updatedCount} updated candidates from Supabase`
     });
   } catch (error) {
     lastEngineError = `Shadow Real sync failed: ${error.message}`;
@@ -1360,8 +1414,12 @@ async function writeTextFile(rootHandle, relativePath, content) {
 }
 
 async function writeWorkPackage(record, reason = "Pipeline package prepared") {
-  if (!record || !trackDirHandle || trackedPackageIds.has(record.id) || packageInFlightIds.has(record.id)) {
+  if (!record || !trackDirHandle || packageInFlightIds.has(record.id)) {
     return false;
+  }
+  if (trackedPackageIds.has(record.id)) {
+    record.packageStatus = "tracked";
+    return true;
   }
 
   packageInFlightIds.add(record.id);
@@ -1375,6 +1433,7 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
     trackedPackageIds.add(record.id);
     record.packageStatus = "tracked";
     await persistWorkPackageRecords(record, folderName);
+    await persistBountyCandidate(record);
     trackStatus.textContent = `${reason}: ${folderName}`;
     return true;
   } catch (error) {
@@ -1391,9 +1450,9 @@ function trackPipelinePackage(record, reason = "Prepared bounty package") {
   if (!record) {
     return;
   }
-  void persistBountyCandidate(record);
   if (!trackDirHandle) {
     record.packageStatus = record.packageStatus || "folder_needed";
+    void persistBountyCandidate(record);
     return;
   }
   void writeWorkPackage(record, reason);
@@ -2106,7 +2165,13 @@ function reviewActionSummary(record) {
     return { label: "Monitoring", text: "Parked for later. It stays here until Evaluate, Package, or Reject." };
   }
   if (record.packageStatus === "folder_needed") {
-    return { label: "Folder Needed", text: "Package requested. Connect Track Folder to create files." };
+    return { label: "Folder Needed", text: trackDirHandle ? "Package requested. Click Package again or reconnect folder permission." : "Package requested. Connect Track Folder to create files." };
+  }
+  if (record.packageStatus === "pending") {
+    return { label: "Packaging", text: "Writing local package files." };
+  }
+  if (isPackageReady(record)) {
+    return { label: "Tracked", text: "Local package folder is ready for feasibility/build review." };
   }
   return { label: "Pending", text: "Choose one action: Monitor, Evaluate, Package, or Reject." };
 }
@@ -2977,6 +3042,10 @@ function renderTrackFolderConfig() {
   setTrackConnectionState(Boolean(trackDirHandle));
 }
 
+function shouldAdvanceAutonomousPipeline() {
+  return appRunMode === APP_MODE.SIMULATION;
+}
+
 function runScrapeMode(mode) {
   if (!simRunning) {
     scrapeSchedule.lastRunMode = "Scrape blocked (start engine)";
@@ -3154,12 +3223,14 @@ function updateNonScoutCycles() {
     agent.reliability = Math.max(88, Math.min(99, agent.reliability + (Math.random() > 0.8 ? -1 : 0)));
   }
 
-  promoteRandomRecord("shortlisted", "submitted", 0.45);
-  const solved = promoteRandomRecord("submitted", "won", 0.32);
-  if (solved) {
-    archiveSolvedBounty(solved);
+  if (shouldAdvanceAutonomousPipeline()) {
+    promoteRandomRecord("shortlisted", "submitted", 0.45);
+    const solved = promoteRandomRecord("submitted", "won", 0.32);
+    if (solved) {
+      archiveSolvedBounty(solved);
+    }
+    promoteRandomRecord("won", "paid", 0.18);
   }
-  promoteRandomRecord("won", "paid", 0.18);
 
   const nextFunnel = computeFunnelSummary(bountyRecords);
 
@@ -3543,18 +3614,23 @@ async function packageCandidate(record) {
   record.nextAction = "package_requested";
   record.packageStatus = trackDirHandle ? record.packageStatus || "pending" : "folder_needed";
   await persistBountyCandidate(record);
+  let wrotePackage = false;
   if (!trackDirHandle) {
     trackStatus.textContent = `Connect Track Folder to create package for ${record.id}.`;
   } else {
-    await writeWorkPackage(record, "Prepared manual candidate package");
+    wrotePackage = await writeWorkPackage(record, "Prepared manual candidate package");
+    if (wrotePackage) {
+      record.nextAction = "feasibility_review";
+      await persistBountyCandidate(record);
+    }
   }
   await persistAgentEvent({
     record,
     agentId: "ops",
-    action: "package_requested",
+    action: wrotePackage ? "package_tracked" : "package_requested",
     fromStage: previousStage,
     toStage: record.stage,
-    reason: "Operator requested work package"
+    reason: wrotePackage ? "Operator package created in connected track folder" : "Operator requested work package"
   });
 }
 

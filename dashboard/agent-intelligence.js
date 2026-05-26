@@ -89,7 +89,12 @@ export const QUALITY_GATES = {
     { id: "source_url_present", label: "Source URL present", severity: "critical", test: (record) => Boolean(record.siteUrl || record.source_url) },
     { id: "title_present", label: "Title present", severity: "critical", test: (record) => Boolean(record.title) },
     { id: "payout_non_negative", label: "Payout is valid", severity: "critical", test: (record) => Number(record.price ?? record.payout_usd ?? 0) >= 0 },
-    { id: "deadline_present", label: "Deadline captured", severity: "warning", test: (record) => Boolean(record.dueDate || record.deadline_utc) },
+    {
+      id: "deadline_or_ongoing",
+      label: "Deadline captured or ongoing program",
+      severity: "warning",
+      test: (record) => Boolean(record.dueDate || record.deadline_utc || record.metadata?.ongoing_program || (record.redFlags || record.red_flags || []).includes("ongoing_program"))
+    },
     { id: "confidence_calibrated", label: "Confidence calibrated", severity: "warning", test: (record) => Number(record.confidence ?? 0) >= 0.6 }
   ],
   shortlisted: [

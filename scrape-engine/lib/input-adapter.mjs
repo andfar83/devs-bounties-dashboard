@@ -3,6 +3,20 @@ import { sep, resolve } from "node:path";
 
 export const MANUAL_FIXTURE_SOURCE_KEY = "manual_fixture";
 const DEFAULT_USER_AGENT = "AA-Bounties-Dashboard/0.1 (+https://aa-bounties-dashboard.vercel.app)";
+const DEFAULT_WEB_SOURCES = [
+  {
+    key: "immunefi_web",
+    label: "Immunefi Bug Bounty Directory",
+    platform: "Immunefi",
+    url: "https://immunefi.com/bug-bounty/",
+    strategy: "immunefi_bounties",
+    defaultType: "Security",
+    defaultConfidence: 0.72,
+    platformTrust: 9,
+    enrichDetailPages: true,
+    enabled: true
+  }
+];
 
 function parseJsonOrJsonLines(text, inputFile) {
   const trimmed = text.trim();
@@ -82,7 +96,18 @@ export async function loadAdapterCandidates({ adapter = "file", inputFile, maxCa
 
 async function loadWebCandidates({ inputFile, maxCandidates }) {
   const resolvedSourcesFile = resolve(inputFile || "./sources/bounty-sources.json");
-  const sourcePayload = JSON.parse(await readFile(resolvedSourcesFile, "utf8"));
+  let sourcePayload = null;
+  try {
+    sourcePayload = JSON.parse(await readFile(resolvedSourcesFile, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+    sourcePayload = {
+      sources: DEFAULT_WEB_SOURCES,
+      fallbackReason: `Source file not bundled: ${resolvedSourcesFile}`
+    };
+  }
   const sources = Array.isArray(sourcePayload) ? sourcePayload : sourcePayload.sources || [];
   if (!sources.length) {
     throw new Error(`Web adapter source file ${resolvedSourcesFile} has no sources.`);
@@ -123,7 +148,7 @@ async function scrapeWebSource(source, limit) {
   const contentType = response.headers.get("content-type") || "";
   const candidates = contentType.includes("application/json")
     ? jsonPayloadToCandidates(JSON.parse(text), source, limit, startedAt)
-    : htmlToCandidates(text, source, limit, startedAt);
+    : await htmlToCandidates(text, source, limit, startedAt);
 
   return {
     candidates,
@@ -155,10 +180,19 @@ function jsonPayloadToCandidates(payload, source, limit, scrapedAt) {
   }));
 }
 
-function htmlToCandidates(html, source, limit, scrapedAt) {
+async function htmlToCandidates(html, source, limit, scrapedAt) {
   const strategy = source.strategy || "generic_links";
   const links = strategy === "immunefi_bounties" ? extractImmunefiBountyLinks(html, source.url) : extractGenericOpportunityLinks(html, source.url);
-  return links.slice(0, limit).map((link) => linkToCandidate(link, source, scrapedAt));
+  const candidates = links.slice(0, limit).map((link) => linkToCandidate(link, source, scrapedAt));
+  if (source.enrichDetailPages === false) {
+    return candidates;
+  }
+
+  const enriched = [];
+  for (const candidate of candidates) {
+    enriched.push(await enrichCandidateFromDetailPage(candidate, source));
+  }
+  return enriched;
 }
 
 function extractImmunefiBountyLinks(html, baseUrl) {
@@ -240,6 +274,172 @@ function linkToCandidate(link, source, scrapedAt) {
       scraped_at: scrapedAt
     }
   };
+}
+
+async function enrichCandidateFromDetailPage(candidate, source) {
+  try {
+    const response = await fetch(candidate.siteUrl, {
+      headers: {
+        "user-agent": source.userAgent || DEFAULT_USER_AGENT,
+        accept: "text/html,*/*;q=0.8"
+      }
+    });
+    const html = await response.text();
+    if (!response.ok) {
+      return withDetailFailure(candidate, `detail_fetch_${response.status}`);
+    }
+
+    const detail = extractImmunefiProgramDetail(html);
+    const payoutUsd = detail.maximumBountyUsd || candidate.price || 0;
+    const hasPayout = payoutUsd > 0;
+    const redFlags = new Set(candidate.redFlags || []);
+    if (hasPayout) {
+      redFlags.delete("payout_not_extracted");
+    }
+    if (detail.kycRequired) {
+      redFlags.add("kyc_required");
+    }
+    if (detail.pocRequired) {
+      redFlags.add("poc_required");
+    }
+    if (detail.vaultProgram) {
+      redFlags.add("vault_program");
+    }
+    redFlags.delete("deadline_not_extracted");
+    redFlags.add("ongoing_program");
+    if (!detail.scopeSummary) {
+      redFlags.add("scope_requires_manual_review");
+    }
+
+    return {
+      ...candidate,
+      title: detail.title || candidate.title,
+      description: detail.overview || candidate.description,
+      scope: detail.scopeSummary || candidate.scope,
+      price: payoutUsd,
+      confidence: hasPayout ? Math.max(Number(candidate.confidence || 0), 0.82) : candidate.confidence,
+      nextAction: hasPayout && payoutUsd >= 10000 ? "evaluate_now" : candidate.nextAction,
+      scores: {
+        ...candidate.scores,
+        fit: hasPayout ? 14 : candidate.scores.fit,
+        payoutQuality: payoutQualityScore(payoutUsd),
+        deadlineFeasibility: detail.pocRequired ? 8 : candidate.scores.deadlineFeasibility,
+        winProbability: detail.pocRequired ? 10 : candidate.scores.winProbability,
+        strategicValue: payoutUsd >= 50000 ? 15 : candidate.scores.strategicValue
+      },
+      redFlags: [...redFlags],
+      metadata: {
+        ...candidate.metadata,
+        detail_enriched: true,
+        detail_url: candidate.siteUrl,
+        maximum_bounty_usd: detail.maximumBountyUsd || null,
+        reward_ranges: detail.rewardRanges,
+        funds_available_usd: detail.fundsAvailableUsd || null,
+        live_since: detail.liveSince || null,
+        last_updated: detail.lastUpdated || null,
+        kyc_required: detail.kycRequired,
+        poc_required: detail.pocRequired,
+        vault_program: detail.vaultProgram,
+        ongoing_program: true,
+        program_tags: detail.tags,
+        extracted_from_rewards_anchor: true
+      }
+    };
+  } catch (error) {
+    return withDetailFailure(candidate, error.message);
+  }
+}
+
+function withDetailFailure(candidate, reason) {
+  return {
+    ...candidate,
+    redFlags: [...new Set([...(candidate.redFlags || []), "detail_fetch_failed"])],
+    metadata: {
+      ...candidate.metadata,
+      detail_enriched: false,
+      detail_error: reason
+    }
+  };
+}
+
+function extractImmunefiProgramDetail(html) {
+  const text = stripHtml(html);
+  const title = firstMatch(text, /Back to Explore\s+(.+?)\s+\|/) || firstMatch(text, /^(.+?)\s+\|/);
+  const maximumBountyUsd = moneyAfter(text, /Maximum Bounty\s+/i);
+  const fundsAvailableUsd = moneyAfter(text, /Funds available\s+/i);
+  const liveSince = firstMatch(text, /Live Since\s+(.+?)\s+Last Updated/i);
+  const lastUpdated = firstMatch(text, /Last Updated\s+(.+?)(?:\s+\*|\s+Submit a Bug|\s+Information)/i);
+  const overview = firstMatch(text, /Program Overview\s+([\s\S]+?)(?:\s+Audits\s+|\s+KYC required\s+|\s+Proof of Concept\s+)/i);
+  const rewardsBody = firstMatch(text, /Rewards\s+([\s\S]+?)(?:\s+View impacts in scope|\s+Program Overview\s+)/i);
+  const rewardRanges = extractRewardRanges(text);
+
+  return {
+    title: title ? title.trim() : "",
+    maximumBountyUsd,
+    fundsAvailableUsd,
+    liveSince: liveSince ? liveSince.trim() : "",
+    lastUpdated: lastUpdated ? lastUpdated.trim() : "",
+    overview: overview ? overview.trim().slice(0, 1800) : "",
+    scopeSummary: rewardsBody ? `Rewards and scope extracted from Immunefi. ${rewardsBody.trim().slice(0, 1200)}` : "",
+    rewardRanges,
+    kycRequired: /KYC required/i.test(text),
+    pocRequired: /PoC Required|Proof of Concept\s+Proof of concept is always required/i.test(text),
+    vaultProgram: /Vault program|Immunefi vault program/i.test(text),
+    tags: extractProgramTags(text)
+  };
+}
+
+function extractRewardRanges(text) {
+  const ranges = [];
+  const regex = /(Smart Contract|Blockchain\/DLT|Websites and Applications|Websites\/Apps|Critical|High|Medium|Low)\s+(Critical|High|Medium|Low)?\s*Max:\s*(\$[\d,]+(?:\.\d+)?)\s+Min:\s*(\$[\d,]+(?:\.\d+)?)/gi;
+  for (const match of text.matchAll(regex)) {
+    ranges.push({
+      category: match[2] ? match[1].trim() : "",
+      threatLevel: (match[2] || match[1]).trim(),
+      maxUsd: parseMoney(match[3]),
+      minUsd: parseMoney(match[4])
+    });
+  }
+  return ranges;
+}
+
+function extractProgramTags(text) {
+  const tags = [];
+  for (const tag of ["Arbitrum", "ETH", "Blockchain", "Infrastructure", "Services", "Staking", "Go", "Rust", "Solidity", "Typescript"]) {
+    if (new RegExp(`\\b${tag}\\b`, "i").test(text)) {
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
+function payoutQualityScore(value) {
+  if (value >= 100000) return 20;
+  if (value >= 50000) return 18;
+  if (value >= 25000) return 16;
+  if (value >= 10000) return 14;
+  if (value > 0) return 10;
+  return 0;
+}
+
+function moneyAfter(text, prefixRegex) {
+  const prefixMatch = text.match(prefixRegex);
+  if (!prefixMatch) {
+    return 0;
+  }
+  const after = text.slice(prefixMatch.index + prefixMatch[0].length);
+  const money = after.match(/\$[\d,]+(?:\.\d+)?/);
+  return money ? parseMoney(money[0]) : 0;
+}
+
+function parseMoney(value = "") {
+  const number = Number(String(value).replace(/[$,]/g, ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function firstMatch(text, regex) {
+  const match = text.match(regex);
+  return match?.[1] || "";
 }
 
 function titleFromSlug(slug = "") {

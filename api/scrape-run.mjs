@@ -71,6 +71,7 @@ function configureScrapeEnvironment({ mode, appMode }) {
 }
 
 export default async function handler(request, response) {
+  const startedAt = Date.now();
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     sendJson(response, 405, { ok: false, error: "Method not allowed." });
@@ -78,18 +79,36 @@ export default async function handler(request, response) {
   }
 
   try {
+    console.info("[scrape-run] request_started", {
+      method: request.method,
+      hasAuthorization: Boolean(request.headers.authorization)
+    });
     await verifySupabaseUser(request);
     const body = await readJsonBody(request);
     const mode = MODE_LIMITS[body.mode] ? body.mode : "fast";
     configureScrapeEnvironment({ mode, appMode: body.appMode });
 
     const result = await runOnce({ print: false });
+    console.info("[scrape-run] request_done", {
+      mode,
+      sourceKey: result?.sourceKey,
+      accepted: result?.accepted,
+      created: result?.created,
+      updated: result?.updated,
+      durationMs: Date.now() - startedAt
+    });
     sendJson(response, 200, {
       ok: true,
       mode,
       result
     });
   } catch (error) {
+    console.error("[scrape-run] request_failed", {
+      statusCode: error.statusCode || 500,
+      message: error.message,
+      stack: error.stack?.split("\n").slice(0, 4).join(" | "),
+      durationMs: Date.now() - startedAt
+    });
     sendJson(response, error.statusCode || 500, {
       ok: false,
       error: error.message || "Scrape engine failed."

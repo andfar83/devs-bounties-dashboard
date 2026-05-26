@@ -9,6 +9,7 @@
       "defaultType": "Security",
       "defaultConfidence": 0.72,
       "platformTrust": 9,
+      "enrichDetailPages": true,
       "enabled": true
     }
   ]

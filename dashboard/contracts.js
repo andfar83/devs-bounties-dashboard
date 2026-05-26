@@ -164,10 +164,27 @@ export function toWorkArtifacts(record, userId = null) {
 
 export function buildWorkPackageFiles(record) {
   const candidate = toBountyCandidate(record);
+  const rewardRanges = Array.isArray(record.metadata?.reward_ranges) ? record.metadata.reward_ranges : [];
+  const rewardSummary = rewardRanges.length
+    ? rewardRanges.map((range) => `- ${range.category || "General"} ${range.threatLevel}: $${Number(range.minUsd || 0).toLocaleString("en-US")} - $${Number(range.maxUsd || 0).toLocaleString("en-US")}`).join("\n")
+    : "- No structured reward ranges captured yet.";
+  const programFlags = [
+    record.metadata?.kyc_required ? "KYC required" : null,
+    record.metadata?.poc_required ? "PoC required" : null,
+    record.metadata?.vault_program ? "Vault program" : null,
+    record.metadata?.ongoing_program ? "Ongoing program" : null
+  ].filter(Boolean);
   const feasibilityReport = `# Feasibility Report - ${record.id}
 
 Decision: conditional_go
-Confidence: unknown
+Confidence: ${record.confidence ?? "unknown"}
+
+## Reward Snapshot
+Maximum Bounty: $${Number(record.price || 0).toLocaleString("en-US")}
+Funds Available: $${Number(record.metadata?.funds_available_usd || 0).toLocaleString("en-US")}
+Program Flags: ${programFlags.length ? programFlags.join(", ") : "none captured"}
+
+${rewardSummary}
 
 ## Scope Statement
 ${record.scope}
@@ -182,9 +199,10 @@ See risk_register.json.
 
 ## Execution Plan
 1. Validate bounty rules and deadline.
-2. Reproduce or define baseline.
-3. Build minimum winning artifact.
-4. Package evidence for Ops review.
+2. Select one in-scope asset/impact to investigate.
+3. Reproduce a valid vulnerability locally or on allowed environments only.
+4. Build proof, mitigation notes, and evidence package.
+5. Package for Ops review before any Immunefi submission.
 `;
 
   const effortEstimate = {
@@ -209,8 +227,18 @@ See risk_register.json.
       impact: "medium",
       owner: AGENT_IDS.FEASIBILITY,
       trigger: "Submission rules are incomplete or conflict with expected artifact format.",
-      mitigation: "Validate rules before execution and store source evidence.",
+      mitigation: "Validate Immunefi rules before execution, store source evidence, and avoid prohibited testing.",
       contingency: "Escalate to no_go or request clarification."
+    },
+    {
+      id: "R-002",
+      category: "Program compliance",
+      probability: record.metadata?.kyc_required || record.metadata?.poc_required ? "known" : "unknown",
+      impact: "high",
+      owner: AGENT_IDS.OPS,
+      trigger: "KYC, PoC, vault, safe harbor, or prohibited-activity requirements apply.",
+      mitigation: "Keep all testing in allowed local forks/test environments and prepare inline PoC evidence.",
+      contingency: "Do not submit until Sentinel confirms compliance."
     }
   ];
 
@@ -234,7 +262,7 @@ ${record.scope}
 ${record.fixRequired}
 
 ## Notes
-This file is a placeholder until the real scrape engine stores source rules and page captures.
+This file is generated from the real scrape detail page when available. Review Immunefi directly before execution.
 `
     },
     {
@@ -274,6 +302,12 @@ Status: not started
 ## Challenge
 ${record.title}
 
+## Target Reward
+$${Number(record.price || 0).toLocaleString("en-US")}
+
+## Working Rule
+Builder must not invent a vulnerability. Start by validating scope, selecting a permitted asset, and building a reproducible local proof only if a real issue is found.
+
 ## Implementation Notes
 Add solution notes here once Builder starts execution.
 `
@@ -309,6 +343,7 @@ No benchmark results recorded yet.
       content: `# Submission Checklist - ${record.id}
 
 - [ ] Confirm platform eligibility and deadline
+- [ ] Confirm Immunefi scope, KYC, PoC, and prohibited activities
 - [ ] Validate fix with reproducible test steps
 - [ ] Attach patch diff and implementation notes
 - [ ] Attach benchmark/proof screenshots
