@@ -4,6 +4,7 @@ import {
   APP_MODE,
   BOUNTY_STAGES,
   LOCAL_TRACKING_CONFIG,
+  WORK_PACKAGE_FILES,
   SCRAPE_ENGINE_PREFLIGHT,
   SCRAPE_MODES,
   SUPABASE_CONFIG
@@ -170,6 +171,8 @@ const archivedBountyIds = new Set();
 const archiveInFlightIds = new Set();
 const trackedPackageIds = new Set();
 const packageInFlightIds = new Set();
+const autoHandoffInFlightIds = new Set();
+let handoffTimer = null;
 let solvedBounties = [];
 const agentWorkStartedAt = new Map();
 let appRunMode = APP_MODE.SIMULATION;
@@ -847,10 +850,10 @@ function upsertSolvedBounty(record) {
       title: record.title,
       site: record.site,
       price: record.price,
-      stage: record.stage,
+      stage: record.metadata?.validation_status || record.nextAction || record.stage,
       folderStatus: trackDirHandle ? "pending" : "pending",
       solvedAt: new Date(),
-      note: trackDirHandle ? "Waiting for archive" : "Tracking folder not connected",
+      note: record.metadata?.validation_summary || (trackDirHandle ? "Waiting for archive" : "Tracking folder not connected"),
       snapshot: { ...record }
     };
     solvedBounties.unshift(entry);
@@ -860,7 +863,8 @@ function upsertSolvedBounty(record) {
   entry.title = record.title;
   entry.site = record.site;
   entry.price = record.price;
-  entry.stage = record.stage;
+  entry.stage = record.metadata?.validation_status || record.nextAction || record.stage;
+  entry.note = record.metadata?.validation_summary || entry.note;
   entry.snapshot = { ...record };
   return entry;
 }
@@ -1384,6 +1388,7 @@ async function loadShadowRealSnapshot(mode = SCRAPE_MODES.FAST) {
   } finally {
     shadowRealSyncInFlight = false;
     renderAll();
+    requestAgentHandoffProcessing();
   }
 }
 
@@ -1446,6 +1451,187 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
   }
 }
 
+async function getWorkPackageFolderHandle(record) {
+  if (!record || !trackDirHandle) {
+    return null;
+  }
+  const folderName = `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`;
+  return trackDirHandle.getDirectoryHandle(folderName, { create: true });
+}
+
+function forgePlanFiles(record) {
+  const flags = Array.isArray(record.redFlags) ? record.redFlags : [];
+  const rewardRanges = Array.isArray(record.metadata?.reward_ranges) ? record.metadata.reward_ranges : [];
+  const rewardLines = rewardRanges.length
+    ? rewardRanges.map((range) => `- ${range.category || "General"} ${range.threatLevel}: $${Number(range.minUsd || 0).toLocaleString("en-US")} - $${Number(range.maxUsd || 0).toLocaleString("en-US")}`).join("\n")
+    : "- No structured reward ranges captured.";
+
+  return [
+    {
+      path: WORK_PACKAGE_FILES.SOLUTION_README,
+      content: `# Forge Build Plan - ${record.id}
+
+Status: research_plan_ready
+Generated At: ${new Date().toISOString()}
+
+## Target
+- Program: ${record.title}
+- Platform: ${record.site}
+- Source: ${record.siteUrl}
+- Max Reward: ${fmtMoney(record.price)}
+
+## Reward Ranges
+${rewardLines}
+
+## Compliance Flags
+${flags.length ? flags.map((flag) => `- ${flag}`).join("\n") : "- none captured"}
+
+## Forge Mandate
+Forge does not invent a vulnerability. The next operator/agent step is scoped research:
+
+1. Re-open the source URL and confirm the current Immunefi rules.
+2. Pick one allowed asset and one allowed impact category.
+3. Build a local/testnet-only reproduction path.
+4. Capture exact commands, environment, screenshots, traces, and expected/actual behavior.
+5. If a real vulnerability is confirmed, produce the PoC and mitigation notes.
+6. If no valid issue is found, mark the package no_go instead of submitting noise.
+
+## Current Output
+This package is ready for scoped technical investigation, not ready for external submission yet.
+`
+    },
+    {
+      path: WORK_PACKAGE_FILES.REPRO,
+      content: `# Reproduction Plan - ${record.id}
+
+## Allowed Scope Check
+- [ ] Confirm target asset is in scope.
+- [ ] Confirm impact category maps to Immunefi rewards.
+- [ ] Confirm KYC/PoC/vault requirements.
+- [ ] Confirm prohibited activities before testing.
+
+## Environment
+- OS:
+- Runtime:
+- Chain/fork/testnet:
+- Repository/commit:
+- Dependencies:
+
+## Baseline
+1. Document setup command.
+2. Document clean run result.
+3. Save logs/screenshots.
+
+## Candidate Vulnerability Research
+1. Hypothesis:
+2. Trigger:
+3. Expected behavior:
+4. Actual behavior:
+5. Impact:
+6. Evidence files:
+`
+    },
+    {
+      path: WORK_PACKAGE_FILES.RESULTS,
+      content: `# Forge Results - ${record.id}
+
+Status: no vulnerability confirmed yet
+
+## Findings
+- Pending scoped investigation.
+
+## Evidence
+- Add screenshots, logs, traces, tx hashes, or local fork output here.
+
+## Submission Readiness
+- [ ] Real issue confirmed
+- [ ] In-scope asset confirmed
+- [ ] Impact mapped to reward table
+- [ ] PoC is reproducible
+- [ ] Mitigation or recommendation documented
+- [ ] Sentinel reviewed before submission
+`
+    }
+  ];
+}
+
+async function writeForgePlan(record) {
+  const folderHandle = await getWorkPackageFolderHandle(record);
+  if (!folderHandle) {
+    return false;
+  }
+  for (const file of forgePlanFiles(record)) {
+    await writeTextFile(folderHandle, file.path, file.content);
+  }
+  trackStatus.textContent = `Forge plan prepared: ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`;
+  return true;
+}
+
+function sentinelReviewFiles(record) {
+  return [
+    {
+      path: WORK_PACKAGE_FILES.OPS_CHECKLIST,
+      content: `# Sentinel Ops Review - ${record.id}
+
+Status: operator_review_ready
+Reviewed At: ${new Date().toISOString()}
+
+## Submission Safety
+- [ ] Human operator confirmed a real vulnerability exists.
+- [ ] Human operator confirmed asset is in Immunefi scope.
+- [ ] Human operator confirmed impact maps to the reward table.
+- [ ] Human operator confirmed PoC is reproducible.
+- [ ] Human operator confirmed KYC, vault, and program rules.
+- [ ] Human operator confirmed no prohibited testing was performed.
+
+## Current Decision
+Do not submit automatically. This package is ready for operator review and scoped research evidence.
+`
+    },
+    {
+      path: WORK_PACKAGE_FILES.SUBMISSION_LOG,
+      content: `# Submission Log - ${record.id}
+
+Status: not submitted
+
+Sentinel prepared the internal review packet. No external Immunefi submission has been made by this app.
+
+## Operator Notes
+- Add confirmed finding summary here.
+- Add Immunefi submission ID only after manual submission.
+`
+    },
+    {
+      path: WORK_PACKAGE_FILES.POST_SUBMIT_PLAN,
+      content: `# Post Submit Plan - ${record.id}
+
+## If Submitted Manually
+- Track reviewer responses.
+- Track KYC/vault requirements.
+- Track payout status.
+- Keep follow-up factual, concise, and evidence-linked.
+
+## If No Valid Issue Is Found
+- Mark package no_go.
+- Save lessons in agent memory.
+- Do not submit low-quality or speculative reports.
+`
+    }
+  ];
+}
+
+async function writeSentinelReview(record) {
+  const folderHandle = await getWorkPackageFolderHandle(record);
+  if (!folderHandle) {
+    return false;
+  }
+  for (const file of sentinelReviewFiles(record)) {
+    await writeTextFile(folderHandle, file.path, file.content);
+  }
+  trackStatus.textContent = `Sentinel review prepared: ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`;
+  return true;
+}
+
 function trackPipelinePackage(record, reason = "Prepared bounty package") {
   if (!record) {
     return;
@@ -1459,13 +1645,21 @@ function trackPipelinePackage(record, reason = "Prepared bounty package") {
 }
 
 function renderSolvedBounties() {
+  const validatedRecords = bountyRecords.filter((record) => record.metadata?.validation_status === "validated_internal" || record.nextAction === "ready_to_submit");
+  for (const record of validatedRecords) {
+    upsertSolvedBounty(record);
+    if (isPackageReady(record)) {
+      setSolvedFolderStatus(record.id, "tracked", record.metadata?.validation_summary || "Validated internally");
+    }
+  }
+
   if (!solvedBounties.length) {
     solvedBody.innerHTML = "";
     solvedMeta.textContent = "No solved bounties yet.";
     return;
   }
 
-  solvedMeta.textContent = `${solvedBounties.length} solved | ${
+  solvedMeta.textContent = `${solvedBounties.length} internally validated | ${
     solvedBounties.filter((row) => row.folderStatus === "tracked").length
   } tracked`;
 
@@ -1486,7 +1680,7 @@ function renderSolvedBounties() {
           <td>${fmtMoney(row.price)}</td>
           <td>${row.stage}</td>
           <td><span class="status ${statusClass}" title="${row.note || ""}">${row.folderStatus}</span></td>
-          <td>${row.solvedAt.toLocaleString("en-US")}</td>
+          <td title="${escapeHtml(row.note || "")}">${row.solvedAt.toLocaleString("en-US")}</td>
         </tr>
       `;
     })
@@ -1584,11 +1778,13 @@ function isWon(record) {
 }
 
 function computeFunnelSummary(records) {
+  const opsReady = records.filter((r) => r.nextAction === "operator_review_ready").length;
   return {
     discovered: records.length,
     shortlisted: records.filter((r) => stageRank[r.stage] >= stageRank.shortlisted).length,
     submitted: records.filter((r) => stageRank[r.stage] >= stageRank.submitted).length,
     won: records.filter((r) => stageRank[r.stage] >= stageRank.won).length,
+    opsReady,
     paid: records.filter((r) => r.stage === "paid").reduce((sum, r) => sum + r.price, 0)
   };
 }
@@ -1637,6 +1833,7 @@ function clearStateForSimulation() {
   archiveInFlightIds.clear();
   trackedPackageIds.clear();
   packageInFlightIds.clear();
+  autoHandoffInFlightIds.clear();
   solvedBounties = [];
   auditEvents = [];
   scrapeRunHistory = [];
@@ -1667,11 +1864,13 @@ function renderFilter() {
 }
 
 function getAgentRuntimeState(agent) {
-  if (!simRunning) {
+  const pipelineAutomationActive = isPipelineAutomationActive();
+
+  if (!simRunning && !pipelineAutomationActive) {
     return { label: "Off", lightClass: "light-off" };
   }
 
-  if (!scrapeEngineRunning) {
+  if (!scrapeEngineRunning && !pipelineAutomationActive) {
     return { label: "Standby", lightClass: "light-standby" };
   }
 
@@ -1793,33 +1992,34 @@ function compareActiveBounties(a, b) {
   return safeRecordTime(b?.retrievedAt) - safeRecordTime(a?.retrievedAt);
 }
 
-function getActiveBountyForAgent(agentId) {
-  const stageByAgent = {
-    scout: BOUNTY_STAGES.DISCOVERED,
-    feasibility: BOUNTY_STAGES.SHORTLISTED,
-    builder: BOUNTY_STAGES.SUBMITTED,
-    ops: BOUNTY_STAGES.WON
-  };
-  const stage = stageByAgent[agentId];
-
-  if (!stage) {
-    return null;
-  }
-
-  const candidates = bountyRecords
+function recordsForAgentQueue(agentId) {
+  return bountyRecords
     .filter((record) => {
-      if (record.stage !== stage) {
-        return false;
-      }
       if (record.nextAction === "discard") {
         return false;
       }
-      if (agentId === "ops" && record.stage === BOUNTY_STAGES.PAID) {
-        return false;
+      if (agentId === "scout") {
+        return record.stage === BOUNTY_STAGES.DISCOVERED;
       }
-      return true;
+      if (agentId === "feasibility") {
+        return record.stage === BOUNTY_STAGES.SHORTLISTED && record.nextAction === "feasibility_review";
+      }
+      if (agentId === "builder") {
+        return (
+          (record.stage === BOUNTY_STAGES.SHORTLISTED && record.nextAction === "builder_ready") ||
+          (record.stage === BOUNTY_STAGES.SUBMITTED && record.nextAction === "builder_execution")
+        );
+      }
+      if (agentId === "ops") {
+        return record.stage === BOUNTY_STAGES.WON || (record.stage === BOUNTY_STAGES.SUBMITTED && record.nextAction === "ops_review");
+      }
+      return false;
     })
     .sort(compareActiveBounties);
+}
+
+function getActiveBountyForAgent(agentId) {
+  const candidates = recordsForAgentQueue(agentId);
 
   return candidates[0] || null;
 }
@@ -1858,22 +2058,19 @@ function agentLoaderMarkup(agentId, isWorking, activeBounty) {
 }
 
 function getAgentStats(agentId) {
-  const discovered = funnel.discovered || 0;
-  const shortlisted = funnel.shortlisted || 0;
-  const submitted = funnel.submitted || 0;
-  const won = funnel.won || 0;
+  const queue = recordsForAgentQueue(agentId).length;
 
   if (agentId === "scout") {
-    return { queue: Math.max(0, discovered - shortlisted), done: discovered };
+    return { queue, done: funnel.discovered || 0 };
   }
   if (agentId === "feasibility") {
-    return { queue: Math.max(0, shortlisted - submitted), done: shortlisted };
+    return { queue, done: bountyRecords.filter((record) => stageRank[record.stage] >= stageRank.shortlisted).length };
   }
   if (agentId === "builder") {
-    return { queue: Math.max(0, submitted - won), done: submitted };
+    return { queue, done: funnel.submitted || 0 };
   }
   if (agentId === "ops") {
-    return { queue: Math.max(0, won - bountyRecords.filter((r) => r.stage === "paid").length), done: won };
+    return { queue, done: funnel.opsReady || 0 };
   }
 
   return { queue: 0, done: 0 };
@@ -1995,16 +2192,17 @@ function renderFlow() {
     scout: funnel.discovered || 0,
     feasibility: funnel.shortlisted || 0,
     builder: funnel.submitted || 0,
-    ops: funnel.won || 0
+    ops: funnel.opsReady || 0
   };
 
   const scoutStats = getAgentStats("scout");
   const feasStats = getAgentStats("feasibility");
   const buildStats = getAgentStats("builder");
   const opsStats = getAgentStats("ops");
+  const pipelineAutomationActive = isPipelineAutomationActive();
   const hasLiveWork =
-    simRunning &&
-    scrapeEngineRunning &&
+    (simRunning && scrapeEngineRunning) ||
+    pipelineAutomationActive ||
     (Date.now() < scoutWorkingUntil ||
       scoutStats.queue > 0 ||
       feasStats.queue > 0 ||
@@ -2241,7 +2439,7 @@ function renderWorkPackageCenter() {
   }
 
   if (!packageRecords.length) {
-    packageBody.innerHTML = `<tr><td colspan="8">No work packages yet.</td></tr>`;
+    packageBody.innerHTML = `<tr><td colspan="9">No work packages yet.</td></tr>`;
     return;
   }
 
@@ -2261,10 +2459,48 @@ function renderWorkPackageCenter() {
           <td>13 files</td>
           <td>${lastEvent ? `${lastEvent.agentId}: ${statusText(lastEvent.action)}` : "--"}</td>
           <td>${statusText(nextAction)}</td>
+          <td><div class="row-actions">${packageActionButtons(record)}</div></td>
         </tr>
       `;
     })
     .join("");
+}
+
+function packageActionButtons(record) {
+  if (record.nextAction === "feasibility_review") {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="run-feasibility" data-bounty-id="${record.id}" type="button">Run Prism</button>`;
+  }
+  if (record.nextAction === "package_requested" && trackDirHandle && !isPackageReady(record)) {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="package" data-bounty-id="${record.id}" type="button">Package</button>`;
+  }
+  if (record.nextAction === "builder_ready") {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="prepare-build" data-bounty-id="${record.id}" type="button">Prepare Build</button>`;
+  }
+  if (record.nextAction === "builder_execution") {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="run-forge" data-bounty-id="${record.id}" type="button">Run Forge Plan</button>`;
+  }
+  if (record.nextAction === "ops_review") {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="run-sentinel" data-bounty-id="${record.id}" type="button">Run Sentinel</button>`;
+  }
+  if (record.nextAction === "operator_review_ready") {
+    return `
+      <button class="btn btn-secondary btn-mini" data-package-action="validate-finding" data-bounty-id="${record.id}" type="button">Validate Finding</button>
+      <button class="btn btn-secondary btn-mini" data-package-action="no-valid-issue" data-bounty-id="${record.id}" type="button">No Valid Issue</button>
+    `;
+  }
+  if (record.nextAction === "ready_to_submit") {
+    return `<span class="meta">Validated, ready for manual submit</span>`;
+  }
+  if (record.nextAction === "no_valid_issue") {
+    return `<span class="meta">Closed: no valid issue</span>`;
+  }
+  if (!isPackageReady(record)) {
+    return `<button class="btn btn-secondary btn-mini" data-package-action="package" data-bounty-id="${record.id}" type="button">Package</button>`;
+  }
+  if (record.stage === BOUNTY_STAGES.SUBMITTED) {
+    return `<span class="meta">Builder queued</span>`;
+  }
+  return `<span class="meta">Ready</span>`;
 }
 
 function renderAuditTrail() {
@@ -2375,6 +2611,7 @@ function buildReportDataset() {
     kpis: {
       discovered: funnel.discovered,
       submitted: funnel.submitted,
+      opsReady: funnel.opsReady,
       won: funnel.won,
       paid: funnel.paid,
       overdues: overdueAll.length,
@@ -2409,6 +2646,7 @@ function reportToSheetRows(reportData) {
   const kpiReadouts = {
     "Discovered": "New opportunities found",
     "Submitted": "Sent to platform/reviewer",
+    "Operator Ready": "Sentinel packet ready for human review",
     "Won": "Accepted or awarded",
     "Paid USD": "Revenue collected",
     "Overdues": "Needs attention",
@@ -2419,6 +2657,7 @@ function reportToSheetRows(reportData) {
   const kpis = [
     ["Discovered", reportData.kpis.discovered],
     ["Submitted", reportData.kpis.submitted],
+    ["Operator Ready", reportData.kpis.opsReady],
     ["Won", reportData.kpis.won],
     ["Paid USD", reportData.kpis.paid],
     ["Overdues", reportData.kpis.overdues],
@@ -2781,6 +3020,7 @@ function renderReport() {
     <div class="report-grid">
       <div class="report-kpi"><p class="kpi-label">Discovered</p><p class="kpi-value">${generatedReportData.kpis.discovered}</p></div>
       <div class="report-kpi"><p class="kpi-label">Submitted</p><p class="kpi-value">${generatedReportData.kpis.submitted}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Operator Ready</p><p class="kpi-value">${generatedReportData.kpis.opsReady}</p></div>
       <div class="report-kpi"><p class="kpi-label">Won</p><p class="kpi-value">${generatedReportData.kpis.won}</p></div>
       <div class="report-kpi"><p class="kpi-label">Paid</p><p class="kpi-value">${fmtMoney(generatedReportData.kpis.paid)}</p></div>
     </div>
@@ -3014,6 +3254,7 @@ async function connectTrackFolder() {
     for (const row of solvedBounties.filter((item) => item.folderStatus !== "tracked")) {
       await archiveSolvedBounty(row.snapshot);
     }
+    requestAgentHandoffProcessing();
   } catch (error) {
     setTrackConnectionState(false);
     trackStatus.textContent = "Tracking folder connection canceled.";
@@ -3044,6 +3285,109 @@ function renderTrackFolderConfig() {
 
 function shouldAdvanceAutonomousPipeline() {
   return appRunMode === APP_MODE.SIMULATION;
+}
+
+function hasPendingAgentHandoffs() {
+  return bountyRecords.some((record) => {
+    return (
+      record.nextAction === "feasibility_review" ||
+      record.nextAction === "package_requested" ||
+      record.nextAction === "builder_ready" ||
+      record.nextAction === "builder_execution" ||
+      record.nextAction === "ops_review"
+    );
+  });
+}
+
+function isPipelineAutomationActive() {
+  return Boolean(
+    appRunMode !== APP_MODE.SIMULATION &&
+      trackDirHandle &&
+      (handoffTimer || autoHandoffInFlightIds.size > 0 || hasPendingAgentHandoffs())
+  );
+}
+
+function stopHandoffTimerIfIdle() {
+  if (!handoffTimer || hasPendingAgentHandoffs()) {
+    return;
+  }
+  clearInterval(handoffTimer);
+  handoffTimer = null;
+}
+
+function clearHandoffTimer() {
+  if (!handoffTimer) {
+    return;
+  }
+  clearInterval(handoffTimer);
+  handoffTimer = null;
+}
+
+function startHandoffTimer() {
+  if (handoffTimer) {
+    return;
+  }
+  handoffTimer = setInterval(() => {
+    void processAutomaticAgentHandoffs();
+  }, 1800);
+}
+
+function requestAgentHandoffProcessing() {
+  if (appRunMode === APP_MODE.SIMULATION || !trackDirHandle || !hasPendingAgentHandoffs()) {
+    stopHandoffTimerIfIdle();
+    return;
+  }
+  startHandoffTimer();
+  void processAutomaticAgentHandoffs();
+}
+
+async function processAutomaticAgentHandoffs() {
+  if (appRunMode === APP_MODE.SIMULATION || !trackDirHandle) {
+    stopHandoffTimerIfIdle();
+    return;
+  }
+
+  const candidates = bountyRecords
+    .filter((record) => {
+      return (
+        record.nextAction === "feasibility_review" ||
+        record.nextAction === "package_requested" ||
+        record.nextAction === "builder_ready" ||
+        record.nextAction === "builder_execution" ||
+        record.nextAction === "ops_review"
+      );
+    })
+    .sort(compareActiveBounties);
+
+  for (const record of candidates) {
+    if (autoHandoffInFlightIds.has(record.id)) {
+      continue;
+    }
+
+    autoHandoffInFlightIds.add(record.id);
+    try {
+      if (record.nextAction === "package_requested") {
+        await packageCandidate(record);
+      }
+      if (record.nextAction === "feasibility_review") {
+        await runFeasibilityCandidate(record);
+      }
+      if (record.nextAction === "builder_ready") {
+        await prepareBuildCandidate(record);
+      }
+      if (record.nextAction === "builder_execution") {
+        await runForgeCandidate(record);
+      }
+      if (record.nextAction === "ops_review") {
+        await runSentinelCandidate(record);
+      }
+    } finally {
+      autoHandoffInFlightIds.delete(record.id);
+    }
+  }
+
+  renderAll();
+  stopHandoffTimerIfIdle();
 }
 
 function runScrapeMode(mode) {
@@ -3223,6 +3567,8 @@ function updateNonScoutCycles() {
     agent.reliability = Math.max(88, Math.min(99, agent.reliability + (Math.random() > 0.8 ? -1 : 0)));
   }
 
+  void processAutomaticAgentHandoffs();
+
   if (shouldAdvanceAutonomousPipeline()) {
     promoteRandomRecord("shortlisted", "submitted", 0.45);
     const solved = promoteRandomRecord("submitted", "won", 0.32);
@@ -3234,12 +3580,13 @@ function updateNonScoutCycles() {
 
   const nextFunnel = computeFunnelSummary(bountyRecords);
 
-  if (feasibility) feasibility.mood = nextFunnel.shortlisted > nextFunnel.submitted ? "Reviewing" : "Standby";
-  if (builder) builder.mood = nextFunnel.submitted > nextFunnel.won ? "Shipping" : "Standby";
-  if (ops) ops.mood = nextFunnel.won > 0 ? "Coordinating" : "Standby";
+  if (feasibility) feasibility.mood = getAgentStats("feasibility").queue > 0 ? "Reviewing" : "Standby";
+  if (builder) builder.mood = getAgentStats("builder").queue > 0 ? "Shipping" : "Standby";
+  if (ops) ops.mood = getAgentStats("ops").queue > 0 ? "Coordinating" : nextFunnel.opsReady > 0 ? "Ready" : "Standby";
 }
 
 function updateJobStates() {
+  const pipelineAutomationActive = isPipelineAutomationActive();
   const statsByAgent = {
     scout: getAgentStats("scout"),
     feasibility: getAgentStats("feasibility"),
@@ -3247,7 +3594,7 @@ function updateJobStates() {
     ops: getAgentStats("ops")
   };
 
-  if (!simRunning || !scrapeEngineRunning) {
+  if ((!simRunning || !scrapeEngineRunning) && !pipelineAutomationActive) {
     for (const job of jobs) {
       job.state = "ready";
     }
@@ -3495,6 +3842,7 @@ function resetDashboard() {
   cadenceCycleStartedAt = null;
   clearScoutWorkState();
   stopSimulation();
+  clearHandoffTimer();
   lastCycleAt = null;
   clearStateForSimulation();
   selectedCadenceMode = null;
@@ -3536,6 +3884,7 @@ function stopAllEngines(reason = "Kill switch engaged") {
   cadenceCycleStartedAt = null;
   clearScoutWorkState();
   stopSimulation();
+  clearHandoffTimer();
   lastCycleAt = null;
   for (const agent of agents) {
     agent.mood = "Standby";
@@ -3602,6 +3951,317 @@ function evaluateCandidate(record) {
   );
 }
 
+async function runFeasibilityCandidate(record) {
+  const previousAction = record.nextAction;
+  if (!applyStageGate(record, BOUNTY_STAGES.SHORTLISTED, "feasibility")) {
+    return;
+  }
+
+  record.nextAction = isPackageReady(record) ? "builder_ready" : "package_requested";
+  if (!isPackageReady(record)) {
+    record.packageStatus = trackDirHandle ? record.packageStatus || "pending" : "folder_needed";
+  }
+  record.metadata = {
+    ...(record.metadata || {}),
+    feasibility_decision: "conditional_go",
+    feasibility_reviewed_at: new Date().toISOString()
+  };
+
+  await persistBountyCandidate(record);
+  await persistAgentEvent({
+    record,
+    agentId: "feasibility",
+    action: "conditional_go",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: isPackageReady(record)
+      ? "Prism approved feasibility. Package is tracked and ready for Builder."
+      : "Prism approved feasibility. Package folder is still required before Builder."
+  });
+  await persistCooperationEvent(
+    buildCooperationEvent({
+      record,
+      fromAgent: "feasibility",
+      toAgent: "builder",
+      trigger: "conditional_go",
+      payload: {
+        previous_action: previousAction,
+        package_status: record.packageStatus || "",
+        reward_usd: record.price || 0,
+        flags: record.redFlags || []
+      }
+    })
+  );
+}
+
+async function prepareBuildCandidate(record) {
+  const previousStage = record.stage;
+  if (!isPackageReady(record)) {
+    record.packageStatus = trackDirHandle ? "pending" : "folder_needed";
+    await persistBountyCandidate(record);
+    recordAuditEvent({
+      record,
+      agentId: "builder",
+      action: "package_not_ready",
+      fromStage: record.stage,
+      toStage: BOUNTY_STAGES.SUBMITTED,
+      reason: "Package folder must be tracked before Builder starts."
+    });
+    return;
+  }
+  if (!applyStageGate(record, BOUNTY_STAGES.SUBMITTED, "builder")) {
+    return;
+  }
+
+  record.stage = BOUNTY_STAGES.SUBMITTED;
+  record.nextAction = "builder_execution";
+  record.metadata = {
+    ...(record.metadata || {}),
+    builder_prepared_at: new Date().toISOString(),
+    build_status: "ready_for_research"
+  };
+  await persistBountyCandidate(record);
+  await persistAgentEvent({
+    record,
+    agentId: "builder",
+    action: "build_prepared",
+    fromStage: previousStage,
+    toStage: record.stage,
+    reason: "Builder has a tracked work package and is ready for scoped research."
+  });
+}
+
+async function runForgeCandidate(record) {
+  if (!isPackageReady(record)) {
+    record.packageStatus = trackDirHandle ? "pending" : "folder_needed";
+    await persistBountyCandidate(record);
+    recordAuditEvent({
+      record,
+      agentId: "builder",
+      action: "package_not_ready",
+      fromStage: record.stage,
+      toStage: record.stage,
+      reason: "Forge needs a tracked local package folder before writing the build plan."
+    });
+    return;
+  }
+
+  let wrotePlan = false;
+  try {
+    wrotePlan = await writeForgePlan(record);
+  } catch (error) {
+    lastEngineError = `Forge plan failed: ${error.message}`;
+    await persistFailureEvent({
+      record,
+      agentId: "builder",
+      failureType: "package_failure",
+      severity: "warning",
+      message: error.message,
+      recoveryAction: "retry_forge_plan"
+    });
+  }
+
+  if (!wrotePlan) {
+    return;
+  }
+
+  const previousAction = record.nextAction;
+  record.nextAction = "ops_review";
+  record.metadata = {
+    ...(record.metadata || {}),
+    build_status: "research_plan_ready",
+    forge_plan_generated_at: new Date().toISOString()
+  };
+  await persistBountyCandidate(record);
+  await persistAgentEvent({
+    record,
+    agentId: "builder",
+    action: "build_plan_ready",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: "Forge wrote the scoped research plan and handed the package to Ops review."
+  });
+  await persistCooperationEvent(
+    buildCooperationEvent({
+      record,
+      fromAgent: "builder",
+      toAgent: "ops",
+      trigger: "package_ready",
+      payload: {
+        previous_action: previousAction,
+        build_status: "research_plan_ready",
+        package_status: record.packageStatus || ""
+      }
+    })
+  );
+}
+
+async function runSentinelCandidate(record) {
+  if (!isPackageReady(record)) {
+    record.packageStatus = trackDirHandle ? "pending" : "folder_needed";
+    await persistBountyCandidate(record);
+    recordAuditEvent({
+      record,
+      agentId: "ops",
+      action: "package_not_ready",
+      fromStage: record.stage,
+      toStage: record.stage,
+      reason: "Sentinel needs a tracked local package folder before preparing ops review."
+    });
+    return;
+  }
+
+  let wroteReview = false;
+  try {
+    wroteReview = await writeSentinelReview(record);
+  } catch (error) {
+    lastEngineError = `Sentinel review failed: ${error.message}`;
+    await persistFailureEvent({
+      record,
+      agentId: "ops",
+      failureType: "package_failure",
+      severity: "warning",
+      message: error.message,
+      recoveryAction: "retry_sentinel_review"
+    });
+  }
+
+  if (!wroteReview) {
+    return;
+  }
+
+  const previousAction = record.nextAction;
+  record.nextAction = "operator_review_ready";
+  record.metadata = {
+    ...(record.metadata || {}),
+    ops_status: "operator_review_ready",
+    sentinel_reviewed_at: new Date().toISOString(),
+    external_submission_status: "not_submitted"
+  };
+  await persistBountyCandidate(record);
+  await persistAgentEvent({
+    record,
+    agentId: "ops",
+    action: "operator_review_ready",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: "Sentinel prepared the ops review packet. Waiting for human operator before any external submission."
+  });
+  await persistCooperationEvent(
+    buildCooperationEvent({
+      record,
+      fromAgent: "ops",
+      toAgent: "scout",
+      trigger: "operator_review_ready",
+      payload: {
+        previous_action: previousAction,
+        external_submission_status: "not_submitted",
+        package_status: record.packageStatus || ""
+      }
+    })
+  );
+}
+
+async function writeValidationDecision(record, { valid, summary }) {
+  const folderHandle = await getWorkPackageFolderHandle(record);
+  if (!folderHandle) {
+    return false;
+  }
+
+  const status = valid ? "validated_internal" : "no_valid_issue";
+  await writeTextFile(
+    folderHandle,
+    WORK_PACKAGE_FILES.RESULTS,
+    `# Validation Results - ${record.id}
+
+Status: ${status}
+Validated At: ${new Date().toISOString()}
+
+## Summary
+${summary}
+
+## Required Evidence Before External Submission
+- Confirmed real vulnerability, not a hypothetical issue.
+- In-scope asset and impact category.
+- Reproducible PoC with environment and commands.
+- Screenshots/logs/traces/transactions as applicable.
+- Rules/KYC/vault/PoC requirements reviewed.
+
+## External Status
+${valid ? "Ready for manual Immunefi submission review. Not submitted automatically." : "Do not submit. No valid issue confirmed."}
+`
+  );
+  await writeTextFile(
+    folderHandle,
+    WORK_PACKAGE_FILES.SUBMISSION_LOG,
+    `# Submission Log - ${record.id}
+
+Internal Validation: ${status}
+External Submission: not_submitted
+
+${valid ? "Human operator must submit manually after final review." : "Closed internally because no valid issue was confirmed."}
+`
+  );
+  return true;
+}
+
+async function validateFindingCandidate(record) {
+  const summary = "Human/operator marked this package as internally validated. This means the package can move to manual submission review, not that Immunefi accepted it.";
+  const wrote = await writeValidationDecision(record, { valid: true, summary }).catch((error) => {
+    lastEngineError = `Validation write failed: ${error.message}`;
+    return false;
+  });
+  if (!wrote) {
+    return;
+  }
+
+  record.nextAction = "ready_to_submit";
+  record.metadata = {
+    ...(record.metadata || {}),
+    validation_status: "validated_internal",
+    validation_summary: summary,
+    solution_validated_at: new Date().toISOString(),
+    external_submission_status: "not_submitted"
+  };
+  await persistBountyCandidate(record);
+  upsertSolvedBounty(record);
+  setSolvedFolderStatus(record.id, "tracked", summary);
+  await persistAgentEvent({
+    record,
+    agentId: "ops",
+    action: "solution_validated_internal",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: summary
+  });
+}
+
+async function closeNoValidIssueCandidate(record) {
+  const summary = "Human/operator marked this package as no valid issue confirmed. Do not submit externally.";
+  await writeValidationDecision(record, { valid: false, summary }).catch((error) => {
+    lastEngineError = `Validation close write failed: ${error.message}`;
+    return false;
+  });
+
+  record.nextAction = "no_valid_issue";
+  record.metadata = {
+    ...(record.metadata || {}),
+    validation_status: "no_valid_issue",
+    validation_summary: summary,
+    closed_at: new Date().toISOString(),
+    external_submission_status: "not_submitted"
+  };
+  await persistBountyCandidate(record);
+  await persistAgentEvent({
+    record,
+    agentId: "ops",
+    action: "no_valid_issue",
+    fromStage: record.stage,
+    toStage: record.stage,
+    reason: summary
+  });
+}
+
 async function packageCandidate(record) {
   const previousStage = record.stage;
   if (record.stage === BOUNTY_STAGES.DISCOVERED && !applyStageGate(record, previousStage, "scout")) {
@@ -3634,6 +4294,32 @@ async function packageCandidate(record) {
   });
 }
 
+async function handlePackageAction(action, bountyId) {
+  const record = bountyRecords.find((item) => item.id === bountyId);
+  if (!record) {
+    return;
+  }
+
+  if (action === "run-feasibility") {
+    await runFeasibilityCandidate(record);
+  } else if (action === "prepare-build") {
+    await prepareBuildCandidate(record);
+  } else if (action === "run-forge") {
+    await runForgeCandidate(record);
+  } else if (action === "run-sentinel") {
+    await runSentinelCandidate(record);
+  } else if (action === "validate-finding") {
+    await validateFindingCandidate(record);
+  } else if (action === "no-valid-issue") {
+    await closeNoValidIssueCandidate(record);
+  } else if (action === "package") {
+    await packageCandidate(record);
+  }
+
+  renderAll();
+  requestAgentHandoffProcessing();
+}
+
 async function handleReviewAction(action, bountyId) {
   const record = bountyRecords.find((item) => item.id === bountyId);
   if (!record) {
@@ -3651,6 +4337,7 @@ async function handleReviewAction(action, bountyId) {
   }
 
   renderAll();
+  requestAgentHandoffProcessing();
 }
 
 let lastScrollY = window.scrollY;
@@ -3737,6 +4424,18 @@ if (reviewQueue) {
     }
     btn.disabled = true;
     void handleReviewAction(btn.dataset.reviewAction, btn.dataset.bountyId).finally(() => {
+      btn.disabled = false;
+    });
+  });
+}
+if (packageBody) {
+  packageBody.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-package-action]");
+    if (!btn) {
+      return;
+    }
+    btn.disabled = true;
+    void handlePackageAction(btn.dataset.packageAction, btn.dataset.bountyId).finally(() => {
       btn.disabled = false;
     });
   });
@@ -3836,6 +4535,7 @@ window.addEventListener("beforeunload", () => {
   scrapeEngineRunning = false;
   cadenceCycleStartedAt = null;
   stopSimulation();
+  clearHandoffTimer();
   if (authSubscription) {
     authSubscription.unsubscribe();
   }
