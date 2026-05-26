@@ -1863,25 +1863,32 @@ function isOpsCompletedRecord(record) {
   );
 }
 
+function isDiscardedRecord(record) {
+  return record.nextAction === "discard";
+}
+
 function computeFunnelSummary(records) {
-  const opsReady = records.filter(isOpsReadyRecord).length;
-  const opsCompleted = records.filter(isOpsCompletedRecord).length;
+  const activeRecords = records.filter((record) => !isDiscardedRecord(record));
+  const opsReady = activeRecords.filter(isOpsReadyRecord).length;
+  const opsCompleted = activeRecords.filter(isOpsCompletedRecord).length;
   return {
-    discovered: records.length,
-    shortlisted: records.filter((r) => stageRank[r.stage] >= stageRank.shortlisted).length,
-    submitted: records.filter((r) => stageRank[r.stage] >= stageRank.submitted).length,
-    won: records.filter((r) => stageRank[r.stage] >= stageRank.won).length,
+    discovered: activeRecords.length,
+    discoveredTotal: records.length,
+    discarded: records.length - activeRecords.length,
+    shortlisted: activeRecords.filter((r) => stageRank[r.stage] >= stageRank.shortlisted).length,
+    submitted: activeRecords.filter((r) => stageRank[r.stage] >= stageRank.submitted).length,
+    won: activeRecords.filter((r) => stageRank[r.stage] >= stageRank.won).length,
     opsReady,
     opsCompleted,
-    paid: records.filter((r) => r.stage === "paid").reduce((sum, r) => sum + r.price, 0)
+    paid: activeRecords.filter((r) => r.stage === "paid").reduce((sum, r) => sum + r.price, 0)
   };
 }
 
 function getRecordsForStage(stageKey) {
   if (stageKey === "paid") {
-    return bountyRecords.filter((r) => r.stage === "paid");
+    return bountyRecords.filter((r) => !isDiscardedRecord(r) && r.stage === "paid");
   }
-  return bountyRecords.filter((r) => stageRank[r.stage] >= stageRank[stageKey]);
+  return bountyRecords.filter((r) => !isDiscardedRecord(r) && stageRank[r.stage] >= stageRank[stageKey]);
 }
 
 function initState() {
@@ -2162,7 +2169,7 @@ function getAgentStats(agentId) {
   const queue = recordsForAgentQueue(agentId).length;
 
   if (agentId === "scout") {
-    return { queue, done: funnel.discovered || 0 };
+    return { queue, done: bountyRecords.filter((record) => !isDiscardedRecord(record) && stageRank[record.stage] >= stageRank.shortlisted).length };
   }
   if (agentId === "feasibility") {
     return { queue, done: bountyRecords.filter((record) => stageRank[record.stage] >= stageRank.shortlisted).length };
@@ -2409,7 +2416,13 @@ function renderControlTower() {
   }
 
   const lastRun = scrapeRunHistory[0] || null;
-  const pendingReview = bountyRecords.filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && record.nextAction !== "discard").length;
+  const engineRun = lastRun?.metadata?.engine_result || null;
+  const scrapedCount = engineRun ? Number(engineRun.accepted ?? engineRun.queued ?? 0) : Number(lastRun?.source_count ?? 0);
+  const createdCount = engineRun ? Number(engineRun.created ?? 0) : Number(lastRun?.created_count ?? 0);
+  const updatedCount = engineRun ? Number(engineRun.updated ?? 0) : Number(lastRun?.updated_count ?? 0);
+  const rejectedCount = engineRun ? Number(engineRun.rejected ?? 0) : Number(lastRun?.rejected_count ?? 0);
+  const pendingReview = bountyRecords.filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && !isDiscardedRecord(record)).length;
+  const hiddenCount = bountyRecords.filter(isDiscardedRecord).length;
   const packageCount = bountyRecords.filter(hasWorkPackageSignal).length;
   const trackedCount = bountyRecords.filter((record) => trackedPackageIds.has(record.id)).length;
   const syncFailed = bountyRecords.filter((record) => record.supabaseSyncStatus === "failed").length;
@@ -2419,10 +2432,12 @@ function renderControlTower() {
   if (healthGrid) {
     healthGrid.innerHTML = `
       <div class="health-tile"><span>Last run</span><strong>${lastRun ? normalizeModeLabel(lastRun.mode) : "--"}</strong></div>
-      <div class="health-tile"><span>Created</span><strong>${lastRun?.created_count ?? 0}</strong></div>
-      <div class="health-tile"><span>Updated</span><strong>${lastRun?.updated_count ?? 0}</strong></div>
-      <div class="health-tile"><span>Rejected</span><strong>${lastRun?.rejected_count ?? 0}</strong></div>
+      <div class="health-tile"><span>Scraped</span><strong>${scrapedCount}</strong></div>
+      <div class="health-tile"><span>New</span><strong>${createdCount}</strong></div>
+      <div class="health-tile"><span>Updated</span><strong>${updatedCount}</strong></div>
+      <div class="health-tile"><span>Rejected</span><strong>${rejectedCount}</strong></div>
       <div class="health-tile"><span>Review</span><strong>${pendingReview}</strong></div>
+      <div class="health-tile"><span>Hidden</span><strong>${hiddenCount}</strong></div>
       <div class="health-tile"><span>Packages</span><strong>${trackedCount}/${packageCount}</strong></div>
       <div class="health-tile"><span>Sync errors</span><strong>${syncFailed}</strong></div>
       <div class="health-tile"><span>Gates</span><strong>${gateBlocked}/${gateWarnings}</strong></div>
@@ -2477,11 +2492,16 @@ function reviewActionSummary(record) {
 
 function renderCandidateReviewQueue() {
   const candidates = bountyRecords
-    .filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && record.nextAction !== "discard")
+    .filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && !isDiscardedRecord(record))
     .slice(0, 16);
+  const hiddenCount = bountyRecords.filter(isDiscardedRecord).length;
 
   if (reviewMeta) {
-    reviewMeta.textContent = candidates.length ? `${candidates.length} pending` : "No pending candidates.";
+    reviewMeta.textContent = candidates.length
+      ? `${candidates.length} pending${hiddenCount ? ` | ${hiddenCount} hidden` : ""}`
+      : hiddenCount
+        ? `No pending candidates | ${hiddenCount} hidden`
+        : "No pending candidates.";
   }
 
   if (!reviewQueue) {
