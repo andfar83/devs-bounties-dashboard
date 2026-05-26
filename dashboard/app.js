@@ -1777,14 +1777,31 @@ function isWon(record) {
   return stageRank[record.stage] >= stageRank.won;
 }
 
+function isOpsReadyRecord(record) {
+  return record.nextAction === "operator_review_ready";
+}
+
+function isOpsCompletedRecord(record) {
+  const validationStatus = record.metadata?.validation_status || "";
+  return (
+    isOpsReadyRecord(record) ||
+    record.nextAction === "ready_to_submit" ||
+    record.nextAction === "no_valid_issue" ||
+    validationStatus === "validated_internal" ||
+    validationStatus === "no_valid_issue"
+  );
+}
+
 function computeFunnelSummary(records) {
-  const opsReady = records.filter((r) => r.nextAction === "operator_review_ready").length;
+  const opsReady = records.filter(isOpsReadyRecord).length;
+  const opsCompleted = records.filter(isOpsCompletedRecord).length;
   return {
     discovered: records.length,
     shortlisted: records.filter((r) => stageRank[r.stage] >= stageRank.shortlisted).length,
     submitted: records.filter((r) => stageRank[r.stage] >= stageRank.submitted).length,
     won: records.filter((r) => stageRank[r.stage] >= stageRank.won).length,
     opsReady,
+    opsCompleted,
     paid: records.filter((r) => r.stage === "paid").reduce((sum, r) => sum + r.price, 0)
   };
 }
@@ -2070,7 +2087,7 @@ function getAgentStats(agentId) {
     return { queue, done: funnel.submitted || 0 };
   }
   if (agentId === "ops") {
-    return { queue, done: funnel.opsReady || 0 };
+    return { queue, done: funnel.opsCompleted || 0 };
   }
 
   return { queue: 0, done: 0 };
@@ -2192,7 +2209,7 @@ function renderFlow() {
     scout: funnel.discovered || 0,
     feasibility: funnel.shortlisted || 0,
     builder: funnel.submitted || 0,
-    ops: funnel.opsReady || 0
+    ops: funnel.opsCompleted || 0
   };
 
   const scoutStats = getAgentStats("scout");
