@@ -1451,6 +1451,72 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
   }
 }
 
+async function writeSolvedBountyArchive(record) {
+  if (!record || !trackDirHandle) {
+    return false;
+  }
+
+  const solvedRootHandle = await trackDirHandle.getDirectoryHandle(LOCAL_TRACKING_CONFIG.SOLVED_FOLDER, { create: true });
+  const folderName = `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`;
+  const folderHandle = await solvedRootHandle.getDirectoryHandle(folderName, { create: true });
+  const solvedAt = record.metadata?.solution_validated_at || new Date().toISOString();
+  const validationStatus = record.metadata?.validation_status || record.nextAction || "validated_internal";
+  const files = buildWorkPackageFiles(record);
+
+  for (const file of files) {
+    await writeTextFile(folderHandle, file.path, file.content);
+  }
+
+  await writeTextFile(
+    folderHandle,
+    "SOLVED_SUMMARY.md",
+    `# Solved Bounty Archive - ${record.id}
+
+Status: ${validationStatus}
+Archived At: ${new Date().toISOString()}
+Validated At: ${solvedAt}
+
+## Bounty
+- Title: ${record.title}
+- Platform: ${record.site}
+- Type: ${record.type}
+- Max Reward: ${fmtMoney(record.price)}
+- Source URL: ${record.siteUrl || "unknown"}
+
+## Validation Summary
+${record.metadata?.validation_summary || "Validated internally by the operator."}
+
+## Submission Status
+${record.metadata?.external_submission_status || "not_submitted"}
+
+## Important
+This folder is the solved/validated archive copy. The active work package remains at ${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}.
+`
+  );
+
+  await writeTextFile(
+    folderHandle,
+    WORK_PACKAGE_FILES.RESULTS,
+    `# Validation Results - ${record.id}
+
+Status: ${validationStatus}
+Validated At: ${solvedAt}
+
+## Summary
+${record.metadata?.validation_summary || "Validated internally by the operator."}
+
+## Source
+${record.siteUrl || "unknown"}
+
+## External Status
+${record.metadata?.external_submission_status || "not_submitted"}
+`
+  );
+
+  trackStatus.textContent = `Solved archive created: ${LOCAL_TRACKING_CONFIG.SOLVED_FOLDER}/${folderName}`;
+  return true;
+}
+
 async function getWorkPackageFolderHandle(record) {
   if (!record || !trackDirHandle) {
     return null;
@@ -1993,6 +2059,14 @@ function originBadgeMarkup(record) {
   return `<span class="origin-badge ${origin.className}" title="${escapeHtml(origin.description)}">${escapeHtml(origin.label)}</span>`;
 }
 
+function sourceLinkMarkup(record, label = "Open source") {
+  const url = record?.siteUrl || "";
+  if (!url) {
+    return `<span class="meta">No source URL</span>`;
+  }
+  return `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+}
+
 function safeRecordTime(value, fallback = 0) {
   const time = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(time) ? time : fallback;
@@ -2247,7 +2321,7 @@ function detailTableMarkup(records) {
         <tr data-bounty-id="${record.id}" class="bounty-row">
           <td>${record.id}</td>
           <td>${originBadgeMarkup(record)}</td>
-          <td><a href="${record.siteUrl || "#"}" target="_blank" rel="noopener noreferrer">${record.site}</a></td>
+          <td>${sourceLinkMarkup(record, record.site)}</td>
           <td>${record.title}</td>
           <td>${record.type}</td>
           <td>${fmtMoney(record.price)}</td>
@@ -2420,6 +2494,7 @@ function renderCandidateReviewQueue() {
           <div>
             <p class="review-title">${record.id} - ${record.title} ${originBadgeMarkup(record)}</p>
             <p class="review-meta">${record.site} | ${record.type} | ${fmtMoney(record.price)} | due ${formatDate(record.dueDate)}</p>
+            <p class="review-source">${sourceLinkMarkup(record, "Open bounty page")}</p>
             <p class="review-state"><span>${actionSummary.label}</span>${actionSummary.text}</p>
           </div>
           <div class="review-score">
@@ -2456,7 +2531,7 @@ function renderWorkPackageCenter() {
   }
 
   if (!packageRecords.length) {
-    packageBody.innerHTML = `<tr><td colspan="9">No work packages yet.</td></tr>`;
+    packageBody.innerHTML = `<tr><td colspan="10">No work packages yet.</td></tr>`;
     return;
   }
 
@@ -2470,6 +2545,7 @@ function renderWorkPackageCenter() {
         <tr>
           <td>${record.id}</td>
           <td>${originBadgeMarkup(record)}</td>
+          <td>${sourceLinkMarkup(record, "Open")}</td>
           <td>${record.stage}</td>
           <td><span class="status ${folderStatus === "tracked" ? "status-ready" : "status-review"}">${statusText(folderStatus)}</span></td>
           <td><span class="status ${syncStatus === "failed" ? "status-blocked" : "status-ready"}">${statusText(syncStatus)}</span></td>
@@ -3238,11 +3314,17 @@ async function archiveSolvedBounty(record) {
   setSolvedFolderStatus(record.id, "pending", "Writing project copy");
 
   try {
-    const wrotePackage = await writeWorkPackage(record, "Tracked solved bounty");
-    if (!wrotePackage && !trackedPackageIds.has(record.id)) {
-      throw new Error("Package write failed");
+    if (!trackedPackageIds.has(record.id)) {
+      const wrotePackage = await writeWorkPackage(record, "Prepared active bounty package before solved archive");
+      if (!wrotePackage && !trackedPackageIds.has(record.id)) {
+        throw new Error("Package write failed");
+      }
     }
-    setSolvedFolderStatus(record.id, "tracked", "Project package created");
+    const wroteArchive = await writeSolvedBountyArchive(record);
+    if (!wroteArchive) {
+      throw new Error("Solved archive write failed");
+    }
+    setSolvedFolderStatus(record.id, "tracked", `Created ${LOCAL_TRACKING_CONFIG.SOLVED_FOLDER}/${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`);
   } catch (error) {
     archivedBountyIds.delete(record.id);
     setSolvedFolderStatus(record.id, "failed", "Folder write failed");
@@ -4242,7 +4324,11 @@ async function validateFindingCandidate(record) {
   };
   await persistBountyCandidate(record);
   upsertSolvedBounty(record);
-  setSolvedFolderStatus(record.id, "tracked", summary);
+  if (trackDirHandle) {
+    await archiveSolvedBounty(record);
+  } else {
+    setSolvedFolderStatus(record.id, "pending", "Connect Track Folder to create solved archive");
+  }
   await persistAgentEvent({
     record,
     agentId: "ops",

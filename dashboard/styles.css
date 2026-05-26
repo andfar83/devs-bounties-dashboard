@@ -819,6 +819,32 @@ h1 {
   margin: 0.2rem 0 0;
 }
 
+.review-source {
+  margin: 0.45rem 0 0;
+}
+
+.source-link {
+  color: #8cff00;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  text-decoration: none;
+  text-shadow: 0 0 12px rgba(140, 255, 0, 0.22);
+}
+
+.source-link::after {
+  content: "->";
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.source-link:hover {
+  color: #d7ff6a;
+  text-decoration: underline;
+}
+
 .review-state {
   display: flex;
   flex-wrap: wrap;

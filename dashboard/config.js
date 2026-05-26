@@ -54,7 +54,8 @@ export const STORAGE_BUCKETS = {
 
 export const LOCAL_TRACKING_CONFIG = {
   ARCHIVE_LABEL: "Local project archive",
-  PACKAGE_PREFIX: "bounty-"
+  PACKAGE_PREFIX: "bounty-",
+  SOLVED_FOLDER: "SOLVED_BOUNTIES"
 };
 
 export const SCRAPE_ENGINE_PREFLIGHT = {
