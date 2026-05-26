@@ -1,8 +1,8 @@
 import { runOnce } from "../scrape-engine/run-once.mjs";
 
 const MODE_LIMITS = {
-  fast: 5,
-  deep: 25,
+  fast: 12,
+  deep: 40,
   full: 100
 };
 
@@ -62,9 +62,9 @@ function configureScrapeEnvironment({ mode, appMode }) {
   process.env.SCRAPE_ENGINE_MODE = appMode === "live_real" ? "live_real" : "shadow_real";
   process.env.SCRAPE_DRY_RUN = "false";
   process.env.SCRAPE_MODE = mode;
-  process.env.SCRAPE_ADAPTER = process.env.SCRAPE_ADAPTER || "web";
-  process.env.SCRAPE_SOURCE_KEY = process.env.SCRAPE_SOURCE_KEY || "immunefi_web";
-  process.env.SCRAPE_INPUT_FILE = process.env.SCRAPE_INPUT_FILE || "./scrape-engine/sources/bounty-sources.json";
+  process.env.SCRAPE_ADAPTER = "web";
+  process.env.SCRAPE_SOURCE_KEY = "multi_source_web";
+  process.env.SCRAPE_INPUT_FILE = "./scrape-engine/sources/bounty-sources.json";
   process.env.SCRAPE_MAX_CANDIDATES = String(MODE_LIMITS[mode] || MODE_LIMITS.fast);
   process.env.ALLOW_MANUAL_FIXTURE_WRITE = "false";
   process.env.ALLOW_FIXTURE_INPUT_WRITE = "false";
@@ -92,6 +92,7 @@ export default async function handler(request, response) {
     console.info("[scrape-run] request_done", {
       mode,
       sourceKey: result?.sourceKey,
+      sourceResults: result?.sourceResults,
       accepted: result?.accepted,
       created: result?.created,
       updated: result?.updated,

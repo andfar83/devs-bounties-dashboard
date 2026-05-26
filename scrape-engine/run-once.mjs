@@ -303,6 +303,7 @@ export async function runOnce({ print = true } = {}) {
       dryRun,
       appMode,
       sourceKey,
+      sourceResults: adapterResult.sourceResults || [],
       accepted: acceptedCandidates.length,
       created: newAcceptedCandidates.length,
       updated: updatedAcceptedCandidates.length,

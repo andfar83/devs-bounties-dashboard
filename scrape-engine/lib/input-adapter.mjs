@@ -14,6 +14,77 @@ const DEFAULT_WEB_SOURCES = [
     defaultConfidence: 0.72,
     platformTrust: 9,
     enrichDetailPages: true,
+    official: true,
+    trustTier: "primary",
+    extracts: ["program_detail_url", "maximum_bounty_usd", "reward_ranges", "program_overview"],
+    enabled: true
+  },
+  {
+    key: "code4rena_audits",
+    label: "Code4rena Audits",
+    platform: "Code4rena",
+    url: "https://code4rena.com/audits",
+    strategy: "generic_links",
+    defaultType: "Security",
+    defaultConfidence: 0.68,
+    platformTrust: 8,
+    enrichDetailPages: false,
+    includePatterns: ["https://code4rena\\.com/audits/[0-9]{4}-[0-9]{2}-"],
+    excludePatterns: ["#", "/competitive-audit$"],
+    official: true,
+    trustTier: "primary",
+    extracts: ["audit_page_url", "project_name", "prize_pool_when_available"],
+    enabled: true
+  },
+  {
+    key: "sherlock_audits",
+    label: "Sherlock Audit Contests",
+    platform: "Sherlock",
+    url: "https://audits.sherlock.xyz/contests",
+    strategy: "generic_links",
+    defaultType: "Security",
+    defaultConfidence: 0.66,
+    platformTrust: 8,
+    enrichDetailPages: false,
+    includePatterns: ["https://audits\\.sherlock\\.xyz/(contests|bug-bounties)(/|$)"],
+    excludePatterns: ["_next/", "favicon", "leaderboards"],
+    official: true,
+    trustTier: "primary",
+    extracts: ["contest_url", "project_name", "contest_status_when_available"],
+    enabled: true
+  },
+  {
+    key: "cantina_competitions",
+    label: "Cantina Competitions",
+    platform: "Cantina",
+    url: "https://cantina.xyz/competitions",
+    strategy: "generic_links",
+    defaultType: "Security",
+    defaultConfidence: 0.66,
+    platformTrust: 8,
+    enrichDetailPages: false,
+    includePatterns: ["https://cantina\\.xyz/competitions/[0-9a-f-]{20,}"],
+    excludePatterns: ["/opportunities", "/ended"],
+    official: true,
+    trustTier: "primary",
+    extracts: ["competition_url", "project_name", "competition_status_when_available"],
+    enabled: true
+  },
+  {
+    key: "hats_vaults",
+    label: "Hats Finance Bounty Vaults",
+    platform: "Hats Finance",
+    url: "https://app.hats.finance/vaults",
+    strategy: "generic_links",
+    defaultType: "Security",
+    defaultConfidence: 0.62,
+    platformTrust: 7,
+    enrichDetailPages: false,
+    includePatterns: ["https://app\\.hats\\.finance/(vaults|vault)/"],
+    excludePatterns: ["_next/", "static/"],
+    official: true,
+    trustTier: "primary",
+    extracts: ["vault_url", "protocol_name", "vault_reward_when_available"],
     enabled: true
   }
 ];
@@ -108,28 +179,96 @@ async function loadWebCandidates({ inputFile, maxCandidates }) {
       fallbackReason: `Source file not bundled: ${resolvedSourcesFile}`
     };
   }
-  const sources = Array.isArray(sourcePayload) ? sourcePayload : sourcePayload.sources || [];
+  const configuredSources = Array.isArray(sourcePayload) ? sourcePayload : sourcePayload.sources || [];
+  const sources = mergeDefaultWebSources(configuredSources);
   if (!sources.length) {
     throw new Error(`Web adapter source file ${resolvedSourcesFile} has no sources.`);
   }
 
   const candidates = [];
   const sourceResults = [];
-  for (const source of sources.filter((item) => item.enabled !== false)) {
-    if (candidates.length >= maxCandidates) {
-      break;
+  const enabledSources = sources.filter((item) => item.enabled !== false);
+  const perSourceLimit = Math.max(3, Math.ceil(maxCandidates / Math.max(1, enabledSources.length)) + 2);
+
+  for (const source of enabledSources) {
+    try {
+      const result = await scrapeWebSource(source, perSourceLimit);
+      sourceResults.push(result.summary);
+      candidates.push(...result.candidates);
+    } catch (error) {
+      sourceResults.push({
+        source_key: source.key,
+        url: source.url,
+        status: "error",
+        found: 0,
+        error: error.message,
+        scraped_at: new Date().toISOString()
+      });
     }
-    const result = await scrapeWebSource(source, maxCandidates - candidates.length);
-    sourceResults.push(result.summary);
-    candidates.push(...result.candidates);
   }
+
+  const dedupedCandidates = dedupeCandidatesBySource(candidates);
 
   return {
     adapter: "web",
     inputFile: resolvedSourcesFile,
     sourceResults,
-    candidates: candidates.slice(0, maxCandidates)
+    candidates: interleaveCandidatesBySource(dedupedCandidates, maxCandidates)
   };
+}
+
+function mergeDefaultWebSources(configuredSources) {
+  const merged = new Map();
+  for (const source of DEFAULT_WEB_SOURCES) {
+    merged.set(source.key, source);
+  }
+  for (const source of configuredSources || []) {
+    if (!source?.key) {
+      continue;
+    }
+    merged.set(source.key, { ...merged.get(source.key), ...source });
+  }
+  return [...merged.values()];
+}
+
+function dedupeCandidatesBySource(candidates) {
+  const seen = new Set();
+  const deduped = [];
+  for (const candidate of candidates) {
+    const key = String(candidate.siteUrl || candidate.source_url || candidate.externalId || candidate.id || "").toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(candidate);
+  }
+  return deduped;
+}
+
+function interleaveCandidatesBySource(candidates, maxCandidates) {
+  const buckets = new Map();
+  for (const candidate of candidates) {
+    const sourceKey = candidate.metadata?.web_source_key || candidate.metadata?.source || candidate.site || "unknown";
+    if (!buckets.has(sourceKey)) {
+      buckets.set(sourceKey, []);
+    }
+    buckets.get(sourceKey).push(candidate);
+  }
+
+  const output = [];
+  const sourceKeys = [...buckets.keys()];
+  while (output.length < maxCandidates && sourceKeys.some((key) => buckets.get(key)?.length)) {
+    for (const key of sourceKeys) {
+      const next = buckets.get(key)?.shift();
+      if (next) {
+        output.push(next);
+      }
+      if (output.length >= maxCandidates) {
+        break;
+      }
+    }
+  }
+  return output;
 }
 
 async function scrapeWebSource(source, limit) {
@@ -182,7 +321,7 @@ function jsonPayloadToCandidates(payload, source, limit, scrapedAt) {
 
 async function htmlToCandidates(html, source, limit, scrapedAt) {
   const strategy = source.strategy || "generic_links";
-  const links = strategy === "immunefi_bounties" ? extractImmunefiBountyLinks(html, source.url) : extractGenericOpportunityLinks(html, source.url);
+  const links = strategy === "immunefi_bounties" ? extractImmunefiBountyLinks(html, source.url) : extractGenericOpportunityLinks(html, source);
   const candidates = links.slice(0, limit).map((link) => linkToCandidate(link, source, scrapedAt));
   if (source.enrichDetailPages === false) {
     return candidates;
@@ -216,16 +355,22 @@ function extractImmunefiBountyLinks(html, baseUrl) {
   return links;
 }
 
-function extractGenericOpportunityLinks(html, baseUrl) {
+function extractGenericOpportunityLinks(html, source) {
+  const baseUrl = source.url;
   const links = [];
   const seen = new Set();
+  const includePatterns = (source.includePatterns || []).map((pattern) => new RegExp(pattern, "i"));
+  const excludePatterns = (source.excludePatterns || []).map((pattern) => new RegExp(pattern, "i"));
   const linkRegex = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of html.matchAll(linkRegex)) {
     const href = match[1];
     const text = stripHtml(match[2]);
     const absoluteUrl = new URL(href, baseUrl).toString();
     const haystack = `${href} ${text}`.toLowerCase();
-    if (!/(bounty|bug-bounty|challenge|contest|competition|audit)/.test(haystack) || seen.has(absoluteUrl)) {
+    const filterTarget = `${absoluteUrl} ${text}`;
+    const isIncluded = includePatterns.length ? includePatterns.some((pattern) => pattern.test(filterTarget)) : /(bounty|bug-bounty|challenge|contest|competition|audit)/.test(haystack);
+    const isExcluded = excludePatterns.some((pattern) => pattern.test(filterTarget)) || /\.(css|js|woff2?|ttf|ico|png|jpg|jpeg|svg)(\?|$)/i.test(absoluteUrl);
+    if (!isIncluded || isExcluded || seen.has(absoluteUrl)) {
       continue;
     }
     seen.add(absoluteUrl);

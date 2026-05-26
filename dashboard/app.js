@@ -2478,7 +2478,7 @@ function reviewActionSummary(record) {
 function renderCandidateReviewQueue() {
   const candidates = bountyRecords
     .filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && record.nextAction !== "discard")
-    .slice(0, 8);
+    .slice(0, 16);
 
   if (reviewMeta) {
     reviewMeta.textContent = candidates.length ? `${candidates.length} pending` : "No pending candidates.";

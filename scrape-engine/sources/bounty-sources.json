@@ -23,6 +23,112 @@
         "program_tags"
       ],
       "enabled": true
+    },
+    {
+      "key": "code4rena_audits",
+      "label": "Code4rena Audits",
+      "platform": "Code4rena",
+      "url": "https://code4rena.com/audits",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.68,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://code4rena\\.com/audits/[0-9]{4}-[0-9]{2}-"
+      ],
+      "excludePatterns": [
+        "#",
+        "/competitive-audit$"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "audit_page_url",
+        "project_name",
+        "prize_pool_when_available",
+        "language_or_ecosystem_when_available"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "sherlock_audits",
+      "label": "Sherlock Audit Contests",
+      "platform": "Sherlock",
+      "url": "https://audits.sherlock.xyz/contests",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.66,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://audits\\.sherlock\\.xyz/(contests|bug-bounties)(/|$)"
+      ],
+      "excludePatterns": [
+        "_next/",
+        "favicon",
+        "leaderboards"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "contest_url",
+        "project_name",
+        "contest_status_when_available"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "cantina_competitions",
+      "label": "Cantina Competitions",
+      "platform": "Cantina",
+      "url": "https://cantina.xyz/competitions",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.66,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://cantina\\.xyz/competitions/[0-9a-f-]{20,}"
+      ],
+      "excludePatterns": [
+        "/opportunities",
+        "/ended"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "competition_url",
+        "project_name",
+        "competition_status_when_available"
+      ],
+      "enabled": true
+    },
+    {
+      "key": "hats_vaults",
+      "label": "Hats Finance Bounty Vaults",
+      "platform": "Hats Finance",
+      "url": "https://app.hats.finance/vaults",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.62,
+      "platformTrust": 7,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://app\\.hats\\.finance/(vaults|vault)/"
+      ],
+      "excludePatterns": [
+        "_next/",
+        "static/"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "vault_url",
+        "protocol_name",
+        "vault_reward_when_available"
+      ],
+      "enabled": true
     }
   ],
   "trustedKnowledgePolicy": {
