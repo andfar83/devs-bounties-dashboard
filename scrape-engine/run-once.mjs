@@ -239,11 +239,11 @@ export async function runOnce({ print = true } = {}) {
         body: decisionRows
       });
     }
-    if (acceptedCandidates.length) {
+    if (newAcceptedCandidates.length) {
       await rest("bounty_candidates?on_conflict=user_id,dedupe_key", {
         method: "POST",
         prefer: "resolution=merge-duplicates",
-        body: acceptedCandidates
+        body: newAcceptedCandidates
       });
     }
     if (cooperationRows.length) {

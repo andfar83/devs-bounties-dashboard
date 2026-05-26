@@ -22,6 +22,12 @@
         "vault_program",
         "program_tags"
       ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
       "enabled": true
     },
     {
@@ -49,6 +55,46 @@
         "prize_pool_when_available",
         "language_or_ecosystem_when_available"
       ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": false
+      },
+      "enabled": true
+    },
+    {
+      "key": "code4rena_bounties",
+      "label": "Code4rena Live Bounties",
+      "platform": "Code4rena",
+      "url": "https://code4rena.com/bounties",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.7,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://code4rena\\.com/bounties/[^#?\\s\"]+"
+      ],
+      "excludePatterns": [
+        "#",
+        "/reports",
+        "/help",
+        "/login"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "bounty_page_url",
+        "project_name",
+        "max_bounty_when_available"
+      ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
       "enabled": true
     },
     {
@@ -76,6 +122,45 @@
         "project_name",
         "contest_status_when_available"
       ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": false
+      },
+      "enabled": true
+    },
+    {
+      "key": "sherlock_bounties",
+      "label": "Sherlock Bug Bounties",
+      "platform": "Sherlock",
+      "url": "https://audits.sherlock.xyz/bug-bounties",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.68,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://audits\\.sherlock\\.xyz/bug-bounties/\\d+"
+      ],
+      "excludePatterns": [
+        "leaderboards",
+        "/contests$"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "bug_bounty_url",
+        "project_name",
+        "last_updated",
+        "payout"
+      ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
       "enabled": true
     },
     {
@@ -102,6 +187,78 @@
         "project_name",
         "competition_status_when_available"
       ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": false
+      },
+      "enabled": true
+    },
+    {
+      "key": "cantina_bounties",
+      "label": "Cantina Live Bounties",
+      "platform": "Cantina",
+      "url": "https://cantina.xyz/opportunities/bounties",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.68,
+      "platformTrust": 8,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://cantina\\.xyz/bounties/[0-9a-f-]{20,}"
+      ],
+      "excludePatterns": [
+        "/ended",
+        "/contact"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "bounty_url",
+        "project_name",
+        "started_on",
+        "max_bounty_when_available"
+      ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
+      "enabled": true
+    },
+    {
+      "key": "intigriti_programs",
+      "label": "Intigriti Public Programs",
+      "platform": "Intigriti",
+      "url": "https://www.intigriti.com/researchers/bug-bounty-programs",
+      "strategy": "generic_links",
+      "defaultType": "Security",
+      "defaultConfidence": 0.62,
+      "platformTrust": 7,
+      "enrichDetailPages": false,
+      "includePatterns": [
+        "https://app\\.intigriti\\.com/programs/[^#?\\s\"]+"
+      ],
+      "excludePatterns": [
+        "newsletter",
+        "calculator",
+        "product"
+      ],
+      "official": true,
+      "trustTier": "primary",
+      "extracts": [
+        "program_url",
+        "program_name",
+        "public_program_listing"
+      ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 0,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
       "enabled": true
     },
     {
@@ -128,6 +285,12 @@
         "protocol_name",
         "vault_reward_when_available"
       ],
+      "intakePolicy": {
+        "minDaysUntilDeadline": 14,
+        "maxAgeDays": 30,
+        "requireOpen": true,
+        "allowOngoing": true
+      },
       "enabled": true
     }
   ],

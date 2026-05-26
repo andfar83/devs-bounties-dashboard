@@ -118,6 +118,34 @@ node .\run-once.mjs
 
 The web adapter only extracts fields it can support from the public page. Missing payout/deadline values remain explicit (`0`/empty) and are flagged with red flags for operator verification.
 
+Deadline-based sources are filtered before they can enter Supabase. A candidate must be open, have at least 14 days before its deadline, and be no more than 30 days old when a start/listing date can be inferred. Closed, completed, ended, overdue, or near-deadline contests are skipped. Ongoing live programs are allowed only when the source policy explicitly allows ongoing programs, and the package records whether the source published a fixed expiration date or only a live/open status.
+
+Atlas now scrapes a broader official pool before selecting review candidates. Fast collects about 24 raw candidates, Deep about 32, and Full about 48, then ranks and interleaves the best 10 across sources so the queue is not dominated by one portal.
+
+## Open-Source Agent Brain Adapter
+
+The production dashboard can use a free/open-source brain through an Ollama-compatible endpoint. This keeps bounty data away from paid third-party model APIs by default.
+
+Recommended local/self-hosted setup:
+
+```powershell
+# Example local models. Adjust model sizes to your machine.
+ollama pull qwen2.5:7b
+ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5-coder:14b
+
+$env:AGENT_BRAIN_ENABLED="true"
+$env:AGENT_BRAIN_BASE_URL="http://127.0.0.1:11434"
+$env:AGENT_MODEL_SCOUT="qwen2.5-coder:7b"
+$env:AGENT_MODEL_FEASIBILITY="qwen2.5:7b"
+$env:AGENT_MODEL_BUILDER="qwen2.5-coder:14b"
+$env:AGENT_MODEL_OPS="qwen2.5:7b"
+
+node .\brain-preflight.mjs
+```
+
+Important deployment note: Vercel cannot call `127.0.0.1` on your computer. For deployed production, run the brain as a private/self-hosted HTTPS service and set `AGENT_BRAIN_BASE_URL` in Vercel to that endpoint. If no endpoint is configured, the adapter stays disabled and the app keeps using deterministic safety gates instead of inventing agent output.
+
 Every web run stores public source labels and source URLs only. It does not write private local file paths to Supabase metadata.
 
 ## Vercel API Bridge

@@ -1,9 +1,15 @@
 import { runOnce } from "../scrape-engine/run-once.mjs";
 
 const MODE_LIMITS = {
-  fast: 12,
-  deep: 40,
-  full: 100
+  fast: 10,
+  deep: 10,
+  full: 10
+};
+
+const MODE_POOL_LIMITS = {
+  fast: 24,
+  deep: 32,
+  full: 48
 };
 
 function sendJson(response, statusCode, payload) {
@@ -66,6 +72,7 @@ function configureScrapeEnvironment({ mode, appMode }) {
   process.env.SCRAPE_SOURCE_KEY = "multi_source_web";
   process.env.SCRAPE_INPUT_FILE = "./scrape-engine/sources/bounty-sources.json";
   process.env.SCRAPE_MAX_CANDIDATES = String(MODE_LIMITS[mode] || MODE_LIMITS.fast);
+  process.env.SCRAPE_POOL_SIZE = String(MODE_POOL_LIMITS[mode] || MODE_POOL_LIMITS.fast);
   process.env.ALLOW_MANUAL_FIXTURE_WRITE = "false";
   process.env.ALLOW_FIXTURE_INPUT_WRITE = "false";
 }

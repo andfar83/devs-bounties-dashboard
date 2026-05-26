@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
   APP_MODE,
@@ -771,7 +771,11 @@ function randomMs(minMs, maxMs) {
 }
 
 function fmtMoney(num) {
-  return `$${num.toLocaleString("en-US")}`;
+  return `$${Number(num || 0).toLocaleString("en-US")}`;
+}
+
+function fmtBountyPrice(num) {
+  return Number(num || 0) > 0 ? fmtMoney(num) : "TBD";
 }
 
 function normalizeModeLabel(value) {
@@ -781,7 +785,34 @@ function normalizeModeLabel(value) {
 }
 
 function statusText(value) {
-  return String(value || "--").replace(/_/g, " ");
+  const labels = {
+    ready_to_submit: "manual submit ready",
+    operator_review_ready: "operator review ready",
+    validated_internal: "validated internal",
+    evidence_required: "evidence required",
+    no_valid_issue: "no valid issue"
+  };
+  return labels[value] || String(value || "--").replace(/_/g, " ");
+}
+
+function displayStageText(record) {
+  const validationStatus = record?.metadata?.validation_status || "";
+  if (validationStatus === "validated_internal" || record?.nextAction === "ready_to_submit") {
+    return "validated internal";
+  }
+  if (validationStatus === "evidence_required") {
+    return "evidence required";
+  }
+  if (record?.nextAction === "operator_review_ready") {
+    return "operator review";
+  }
+  if (record?.nextAction === "ops_review") {
+    return "ops review";
+  }
+  if (record?.nextAction === "builder_execution") {
+    return "builder execution";
+  }
+  return statusText(record?.stage);
 }
 
 function formatDate(dateStr) {
@@ -793,6 +824,37 @@ function formatDate(dateStr) {
     return "Ongoing";
   }
   return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
+
+function formatSourceDateValue(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
+
+function sourceCreatedLabel(record = {}) {
+  const metadata = record.metadata || {};
+  const label = metadata.source_date_label || (metadata.live_since ? "Live Since" : "Discovered");
+  const rawDate = metadata.source_start_at || metadata.live_since || metadata.created_at || record.retrievedAt || "";
+  return `${label}: ${formatSourceDateValue(rawDate) || "not published"}`;
+}
+
+function sourceExpirationLabel(record = {}) {
+  const metadata = record.metadata || {};
+  const rawDeadline = metadata.source_deadline_at || record.dueDate || "";
+  if (rawDeadline) {
+    return `Expires: ${formatSourceDateValue(rawDeadline)}`;
+  }
+  return `Expires: ${metadata.source_expiration_label || "no fixed date published; verify source page before work."}`;
+}
+
+function reviewDateSummary(record = {}) {
+  return `${sourceCreatedLabel(record)} | ${sourceExpirationLabel(record)}`;
 }
 
 function disclosureHtml(record) {
@@ -808,9 +870,10 @@ function disclosureHtml(record) {
     </div>
     <div class="report-grid">
       <div class="report-kpi"><p class="kpi-label">Type</p><p class="kpi-value">${record.type}</p></div>
-      <div class="report-kpi"><p class="kpi-label">Stage</p><p class="kpi-value">${record.stage}</p></div>
-      <div class="report-kpi"><p class="kpi-label">Price</p><p class="kpi-value">${fmtMoney(record.price)}</p></div>
-      <div class="report-kpi"><p class="kpi-label">Due</p><p class="kpi-value">${formatDate(record.dueDate)}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Stage</p><p class="kpi-value">${displayStageText(record)}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Price</p><p class="kpi-value">${fmtBountyPrice(record.price)}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Created/Listed</p><p class="kpi-value">${sourceCreatedLabel(record)}</p></div>
+      <div class="report-kpi"><p class="kpi-label">Expires</p><p class="kpi-value">${sourceExpirationLabel(record)}</p></div>
     </div>
     <div class="origin-disclosure ${origin.className}">
       <strong>${escapeHtml(origin.label)}</strong>
@@ -850,7 +913,7 @@ function upsertSolvedBounty(record) {
       title: record.title,
       site: record.site,
       price: record.price,
-      stage: record.metadata?.validation_status || record.nextAction || record.stage,
+      stage: displayStageText(record),
       folderStatus: trackDirHandle ? "pending" : "pending",
       solvedAt: new Date(),
       note: record.metadata?.validation_summary || (trackDirHandle ? "Waiting for archive" : "Tracking folder not connected"),
@@ -863,7 +926,7 @@ function upsertSolvedBounty(record) {
   entry.title = record.title;
   entry.site = record.site;
   entry.price = record.price;
-  entry.stage = record.metadata?.validation_status || record.nextAction || record.stage;
+  entry.stage = displayStageText(record);
   entry.note = record.metadata?.validation_summary || entry.note;
   entry.snapshot = { ...record };
   return entry;
@@ -946,6 +1009,61 @@ function applyStageGate(record, targetStage, agentId = agentForStage(targetStage
 
 function isPackageReady(record) {
   return Boolean(record && (trackedPackageIds.has(record.id) || record.packageStatus === "tracked" || record.packageStatus === "prepared"));
+}
+
+function displaySupabaseStatus(record) {
+  if (record?.supabaseSyncStatus === "failed") {
+    return "failed";
+  }
+  if (
+    record?.supabaseSyncStatus === "synced" ||
+    record?.dedupeKey ||
+    isPackageReady(record) ||
+    record?.metadata?.package_status === "tracked" ||
+    record?.metadata?.validation_status === "validated_internal" ||
+    record?.nextAction === "ready_to_submit"
+  ) {
+    return "synced";
+  }
+  return record?.supabaseSyncStatus || "pending";
+}
+
+function strongestPackageStatus(...statuses) {
+  const rank = {
+    failed: 0,
+    folder_needed: 1,
+    pending: 2,
+    prepared: 3,
+    tracked: 4
+  };
+  return statuses
+    .filter(Boolean)
+    .sort((a, b) => (rank[b] ?? -1) - (rank[a] ?? -1))[0] || "";
+}
+
+function markPackageTracked(record, folderName = "") {
+  if (!record?.id) {
+    return null;
+  }
+  trackedPackageIds.add(record.id);
+  const liveRecord = bountyRecords.find((item) => item.id === record.id) || record;
+  liveRecord.packageStatus = "tracked";
+  liveRecord.metadata = {
+    ...(liveRecord.metadata || {}),
+    package_status: "tracked",
+    local_package_folder: folderName || liveRecord.metadata?.local_package_folder || `${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`,
+    package_tracked_at: new Date().toISOString()
+  };
+  if (record !== liveRecord) {
+    record.packageStatus = "tracked";
+    record.metadata = {
+      ...(record.metadata || {}),
+      package_status: "tracked",
+      local_package_folder: liveRecord.metadata.local_package_folder,
+      package_tracked_at: liveRecord.metadata.package_tracked_at
+    };
+  }
+  return liveRecord;
 }
 
 function recordAuditEvent({ record = null, agentId = "system", action, fromStage = null, toStage = null, reason = "" }) {
@@ -1177,22 +1295,38 @@ async function persistScrapeRun(mode, stats) {
 
 function upsertRemoteBountyRecord(incoming) {
   const incomingKey = incoming.dedupeKey || incoming.id;
+  if (incoming.packageStatus === "tracked" || incoming.metadata?.package_status === "tracked") {
+    markPackageTracked(incoming, incoming.metadata?.local_package_folder || "");
+  }
   const index = bountyRecords.findIndex((record) => {
     return record.dedupeKey === incomingKey || record.id === incoming.id;
   });
 
   if (index === -1) {
+    if (incoming.packageStatus === "tracked" || incoming.metadata?.package_status === "tracked") {
+      markPackageTracked(incoming, incoming.metadata?.local_package_folder || "");
+    }
     bountyRecords.push(incoming);
     return "created";
   }
 
   const existing = bountyRecords[index];
-  bountyRecords[index] = {
+  const mergedPackageStatus = strongestPackageStatus(existing.packageStatus, incoming.packageStatus, incoming.metadata?.package_status);
+  const merged = {
     ...existing,
     ...incoming,
-    packageStatus: existing.packageStatus || incoming.packageStatus,
+    metadata: {
+      ...(existing.metadata || {}),
+      ...(incoming.metadata || {}),
+      package_status: mergedPackageStatus || incoming.metadata?.package_status || existing.metadata?.package_status || ""
+    },
+    packageStatus: mergedPackageStatus,
     supabaseSyncStatus: "synced"
   };
+  if (mergedPackageStatus === "tracked") {
+    markPackageTracked(merged, merged.metadata?.local_package_folder || "");
+  }
+  bountyRecords[index] = merged;
   return "updated";
 }
 
@@ -1423,12 +1557,24 @@ async function writeTextFile(rootHandle, relativePath, content) {
   await writable.close();
 }
 
+async function readTextFile(rootHandle, relativePath) {
+  const parts = relativePath.split("/").filter(Boolean);
+  const fileName = parts.pop();
+  let directoryHandle = rootHandle;
+  for (const part of parts) {
+    directoryHandle = await directoryHandle.getDirectoryHandle(part);
+  }
+  const fileHandle = await directoryHandle.getFileHandle(fileName);
+  const file = await fileHandle.getFile();
+  return file.text();
+}
+
 async function writeWorkPackage(record, reason = "Pipeline package prepared") {
   if (!record || !trackDirHandle || packageInFlightIds.has(record.id)) {
     return false;
   }
   if (trackedPackageIds.has(record.id)) {
-    record.packageStatus = "tracked";
+    markPackageTracked(record);
     return true;
   }
 
@@ -1440,10 +1586,9 @@ async function writeWorkPackage(record, reason = "Pipeline package prepared") {
     for (const file of files) {
       await writeTextFile(folderHandle, file.path, file.content);
     }
-    trackedPackageIds.add(record.id);
-    record.packageStatus = "tracked";
-    await persistWorkPackageRecords(record, folderName);
-    await persistBountyCandidate(record);
+    const liveRecord = markPackageTracked(record, folderName);
+    await persistWorkPackageRecords(liveRecord || record, folderName);
+    await persistBountyCandidate(liveRecord || record);
     trackStatus.textContent = `${reason}: ${folderName}`;
     return true;
   } catch (error) {
@@ -1485,7 +1630,7 @@ Validated At: ${solvedAt}
 - Title: ${record.title}
 - Platform: ${record.site}
 - Type: ${record.type}
-- Max Reward: ${fmtMoney(record.price)}
+- Max Reward: ${fmtBountyPrice(record.price)}
 - Source URL: ${record.siteUrl || "unknown"}
 
 ## Validation Summary
@@ -1549,7 +1694,7 @@ Generated At: ${new Date().toISOString()}
 - Program: ${record.title}
 - Platform: ${record.site}
 - Source: ${record.siteUrl}
-- Max Reward: ${fmtMoney(record.price)}
+- Max Reward: ${fmtBountyPrice(record.price)}
 
 ## Reward Ranges
 ${rewardLines}
@@ -1748,7 +1893,7 @@ function renderSolvedBounties() {
           <td>${row.id}</td>
           <td>${row.title}</td>
           <td>${row.site}</td>
-          <td>${fmtMoney(row.price)}</td>
+          <td>${fmtBountyPrice(row.price)}</td>
           <td>${row.stage}</td>
           <td><span class="status ${statusClass}" title="${row.note || ""}">${row.folderStatus}</span></td>
           <td title="${escapeHtml(row.note || "")}">${row.solvedAt.toLocaleString("en-US")}</td>
@@ -1764,7 +1909,7 @@ function syncSolvedRowsWithLiveRecords() {
     if (!live) {
       continue;
     }
-    solved.stage = live.stage;
+    solved.stage = displayStageText(live);
     solved.price = live.price;
     solved.snapshot = { ...live };
   }
@@ -2341,7 +2486,7 @@ function detailTableMarkup(records) {
           <td>${sourceLinkMarkup(record, record.site)}</td>
           <td>${record.title}</td>
           <td>${record.type}</td>
-          <td>${fmtMoney(record.price)}</td>
+          <td>${fmtBountyPrice(record.price)}</td>
           <td>${isWon(record) ? "Yes" : "No"}</td>
           <td>${isOverdue(record) ? "Yes" : "No"}</td>
           <td>${formatDate(record.dueDate)}</td>
@@ -2424,7 +2569,7 @@ function renderControlTower() {
   const pendingReview = bountyRecords.filter((record) => record.stage === BOUNTY_STAGES.DISCOVERED && !isDiscardedRecord(record)).length;
   const hiddenCount = bountyRecords.filter(isDiscardedRecord).length;
   const packageCount = bountyRecords.filter(hasWorkPackageSignal).length;
-  const trackedCount = bountyRecords.filter((record) => trackedPackageIds.has(record.id)).length;
+  const trackedCount = bountyRecords.filter(isPackageReady).length;
   const syncFailed = bountyRecords.filter((record) => record.supabaseSyncStatus === "failed").length;
   const gateBlocked = bountyRecords.filter((record) => record.qualityGate?.status === "blocked").length;
   const gateWarnings = bountyRecords.filter((record) => record.qualityGate?.status === "warning").length;
@@ -2523,7 +2668,7 @@ function renderCandidateReviewQueue() {
         <article class="review-card">
           <div>
             <p class="review-title">${record.id} - ${record.title} ${originBadgeMarkup(record)}</p>
-            <p class="review-meta">${record.site} | ${record.type} | ${fmtMoney(record.price)} | due ${formatDate(record.dueDate)}</p>
+            <p class="review-meta">${record.site} | ${record.type} | ${fmtBountyPrice(record.price)} | ${reviewDateSummary(record)}</p>
             <p class="review-source">${sourceLinkMarkup(record, "Open bounty page")}</p>
             <p class="review-state"><span>${actionSummary.label}</span>${actionSummary.text}</p>
           </div>
@@ -2552,7 +2697,7 @@ function renderWorkPackageCenter() {
   const packageRecords = bountyRecords.filter(hasWorkPackageSignal);
 
   if (packageMeta) {
-    const trackedCount = packageRecords.filter((record) => trackedPackageIds.has(record.id)).length;
+    const trackedCount = packageRecords.filter(isPackageReady).length;
     packageMeta.textContent = packageRecords.length ? `${trackedCount}/${packageRecords.length} tracked` : "No packages yet.";
   }
 
@@ -2567,8 +2712,8 @@ function renderWorkPackageCenter() {
 
   packageBody.innerHTML = packageRecords
     .map((record) => {
-      const folderStatus = trackedPackageIds.has(record.id) ? "tracked" : record.packageStatus || "folder_needed";
-      const syncStatus = record.supabaseSyncStatus || "pending";
+      const folderStatus = isPackageReady(record) ? "tracked" : record.packageStatus || "folder_needed";
+      const syncStatus = displaySupabaseStatus(record);
       const lastEvent = lastAuditForBounty(record.id);
       const nextAction = record.nextAction || (stageRank[record.stage] >= stageRank.submitted ? "ops_review" : "evaluate_now");
       return `
@@ -2576,7 +2721,7 @@ function renderWorkPackageCenter() {
           <td>${record.id}</td>
           <td>${originBadgeMarkup(record)}</td>
           <td>${sourceLinkMarkup(record, "Open")}</td>
-          <td>${record.stage}</td>
+          <td>${displayStageText(record)}</td>
           <td><span class="status ${folderStatus === "tracked" ? "status-ready" : "status-review"}">${statusText(folderStatus)}</span></td>
           <td><span class="status ${syncStatus === "failed" ? "status-blocked" : "status-ready"}">${statusText(syncStatus)}</span></td>
           <td>${Object.keys(WORK_PACKAGE_FILES).length} files</td>
@@ -3298,8 +3443,8 @@ function projectCopyText(record) {
 
 Platform: ${record.site}
 Type: ${record.type}
-Stage: ${record.stage}
-Price: ${fmtMoney(record.price)}
+Stage: ${displayStageText(record)}
+Price: ${fmtBountyPrice(record.price)}
 Due Date: ${record.dueDate}
 Source URL: ${record.siteUrl}
 
@@ -3353,6 +3498,8 @@ async function archiveSolvedBounty(record) {
     if (!wroteArchive) {
       throw new Error("Solved archive write failed");
     }
+    const liveRecord = markPackageTracked(record);
+    await persistBountyCandidate(liveRecord || record);
     setSolvedFolderStatus(record.id, "tracked", `Created ${LOCAL_TRACKING_CONFIG.SOLVED_FOLDER}/${LOCAL_TRACKING_CONFIG.PACKAGE_PREFIX}${record.id}`);
   } catch (error) {
     archivedBountyIds.delete(record.id);
@@ -4339,8 +4486,145 @@ ${valid ? "Human operator must submit manually after final review." : "Closed in
   return true;
 }
 
+function textHasSubstance(text = "", markers = []) {
+  const normalized = String(text || "").toLowerCase();
+  return markers.some((marker) => normalized.includes(marker.toLowerCase()));
+}
+
+async function evaluateSubmissionEvidence(record) {
+  const blockers = [];
+  const warnings = [];
+  const folderHandle = await getWorkPackageFolderHandle(record);
+  if (!folderHandle) {
+    return {
+      passed: false,
+      blockers: ["Tracked work package folder is not available."],
+      warnings,
+      checks: {}
+    };
+  }
+
+  const read = async (path) => {
+    try {
+      return await readTextFile(folderHandle, path);
+    } catch {
+      return "";
+    }
+  };
+
+  const sourceJson = await read(WORK_PACKAGE_FILES.SOURCE_JSON);
+  const sourceEvidence = await read(WORK_PACKAGE_FILES.SOURCE_EVIDENCE);
+  const retrievedPage = await read(WORK_PACKAGE_FILES.RETRIEVED_PAGE_HTML);
+  const repro = await read(WORK_PACKAGE_FILES.REPRO);
+  const results = await read(WORK_PACKAGE_FILES.RESULTS);
+  const patch = await read(WORK_PACKAGE_FILES.PATCH);
+  const checklist = await read(WORK_PACKAGE_FILES.OPS_CHECKLIST);
+
+  const checks = {
+    sourceUrl: Boolean(record.siteUrl || textHasSubstance(sourceJson, ["source_url"])),
+    capturedHtml: Boolean(retrievedPage && !/pending real engine attachment/i.test(retrievedPage) && retrievedPage.length > 1200),
+    realScope: Boolean(sourceEvidence && !/operator must review scope|scope not extracted|pending operator verification/i.test(sourceEvidence)),
+    realIssueConfirmed: textHasSubstance(results, ["CONFIRMED_REAL_ISSUE", "real vulnerability confirmed", "validated exploit", "confirmed impact"]),
+    reproduciblePoc: textHasSubstance(repro, ["CONFIRMED_REPRO_STEPS", "reproduction command", "actual behavior", "transaction hash", "test output"]),
+    evidenceArtifacts: textHasSubstance(results + patch, ["evidence file", "screenshot", "trace", "transaction", "log output", "test passed", "patch diff"]),
+    opsChecklistCompleted: Boolean(checklist && !/\[ \]/.test(checklist))
+  };
+
+  if (!checks.sourceUrl) blockers.push("Missing official source URL.");
+  if (!checks.capturedHtml) blockers.push("Missing captured source HTML; retrieved-page.html is still a placeholder.");
+  if (!checks.realScope) blockers.push("Scope/rules are not extracted enough for safe submission.");
+  if (!checks.realIssueConfirmed) blockers.push("No confirmed real vulnerability marker found in solution/RESULTS.md.");
+  if (!checks.reproduciblePoc) blockers.push("No reproducible PoC/evidence steps found in solution/REPRO.md.");
+  if (!checks.evidenceArtifacts) blockers.push("No concrete evidence artifact reference found in results or patch.");
+  if (!checks.opsChecklistCompleted) warnings.push("Sentinel checklist is not fully completed.");
+
+  return {
+    passed: blockers.length === 0,
+    blockers,
+    warnings,
+    checks
+  };
+}
+
+async function writeEvidenceGateReport(record, gateResult) {
+  const folderHandle = await getWorkPackageFolderHandle(record);
+  if (!folderHandle) {
+    return false;
+  }
+  await writeTextFile(
+    folderHandle,
+    WORK_PACKAGE_FILES.RESULTS,
+    `# Validation Results - ${record.id}
+
+Status: evidence_required
+Checked At: ${new Date().toISOString()}
+
+## Decision
+Sentinel blocked manual-submit readiness because required evidence is missing.
+
+## Blockers
+${gateResult.blockers.map((item) => `- ${item}`).join("\n") || "- none"}
+
+## Warnings
+${gateResult.warnings.map((item) => `- ${item}`).join("\n") || "- none"}
+
+## Required To Unlock
+- Capture the real source/detail page into ${WORK_PACKAGE_FILES.RETRIEVED_PAGE_HTML}.
+- Extract concrete in-scope assets, rules, and payout/impact mapping.
+- Add CONFIRMED_REAL_ISSUE to this file only after a real issue is proven.
+- Add CONFIRMED_REPRO_STEPS to ${WORK_PACKAGE_FILES.REPRO} with exact commands/evidence.
+- Reference concrete logs, traces, screenshots, transactions, tests, or patch diff.
+- Complete every Sentinel checklist item.
+
+## External Status
+not_submitted
+`
+  );
+  return true;
+}
+
 async function validateFindingCandidate(record) {
   const summary = "Human/operator marked this package as internally validated. This means the package can move to manual submission review, not that Immunefi accepted it.";
+  const gateResult = await evaluateSubmissionEvidence(record).catch((error) => ({
+    passed: false,
+    blockers: [`Evidence gate failed: ${error.message}`],
+    warnings: [],
+    checks: {}
+  }));
+
+  if (!gateResult.passed) {
+    const gateSummary = `Sentinel evidence gate blocked submit readiness: ${gateResult.blockers.join(" ")}`;
+    await writeEvidenceGateReport(record, gateResult).catch((error) => {
+      lastEngineError = `Evidence gate report failed: ${error.message}`;
+      return false;
+    });
+    record.nextAction = "operator_review_ready";
+    record.metadata = {
+      ...(record.metadata || {}),
+      validation_status: "evidence_required",
+      validation_summary: gateSummary,
+      evidence_gate: {
+        status: "blocked",
+        checked_at: new Date().toISOString(),
+        blockers: gateResult.blockers,
+        warnings: gateResult.warnings,
+        checks: gateResult.checks
+      },
+      external_submission_status: "not_submitted"
+    };
+    lastEngineError = gateSummary;
+    await persistBountyCandidate(record);
+    await persistAgentEvent({
+      record,
+      agentId: "ops",
+      action: "evidence_gate_blocked",
+      fromStage: record.stage,
+      toStage: record.stage,
+      reason: gateSummary
+    });
+    return;
+  }
+
   const wrote = await writeValidationDecision(record, { valid: true, summary }).catch((error) => {
     lastEngineError = `Validation write failed: ${error.message}`;
     return false;
@@ -4354,6 +4638,13 @@ async function validateFindingCandidate(record) {
     ...(record.metadata || {}),
     validation_status: "validated_internal",
     validation_summary: summary,
+    evidence_gate: {
+      status: "passed",
+      checked_at: new Date().toISOString(),
+      blockers: [],
+      warnings: gateResult.warnings,
+      checks: gateResult.checks
+    },
     solution_validated_at: new Date().toISOString(),
     external_submission_status: "not_submitted"
   };

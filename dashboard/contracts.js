@@ -54,6 +54,8 @@ export function toBountyCandidate(record, userId = null) {
       ...(record.metadata || {}),
       app_mode: record.appRunMode || APP_MODE.SHADOW_REAL,
       source: record.metadata?.source || "operator_intake",
+      package_status: record.packageStatus || record.metadata?.package_status || "",
+      local_package_folder: record.metadata?.local_package_folder || "",
       quality_gate: record.qualityGate || null,
       agent_decision: record.agentDecision || null
     }
@@ -87,7 +89,7 @@ export function fromBountyCandidate(row) {
     redFlags: Array.isArray(row?.red_flags) ? row.red_flags : [],
     metadata,
     supabaseSyncStatus: "synced",
-    packageStatus: ""
+    packageStatus: metadata.package_status || ""
   };
 }
 
@@ -169,6 +171,33 @@ export function toWorkArtifacts(record, userId = null) {
   ];
 }
 
+function formatSourceDate(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function sourceCreatedLabel(record = {}) {
+  const metadata = record.metadata || {};
+  const label = metadata.source_date_label || (metadata.live_since ? "Live Since" : "Discovered");
+  const rawDate = metadata.source_start_at || metadata.live_since || record.retrievedAt || "";
+  return `${label}: ${formatSourceDate(rawDate) || "not published by source"}`;
+}
+
+function sourceExpirationLabel(record = {}) {
+  const metadata = record.metadata || {};
+  const rawDeadline = metadata.source_deadline_at || record.dueDate || "";
+  if (rawDeadline) {
+    return `Expires: ${formatSourceDate(rawDeadline)}`;
+  }
+  return `Expires: ${metadata.source_expiration_label || "no fixed date published by source; verify source page before execution."}`;
+}
+
 export function buildWorkPackageFiles(record) {
   const candidate = toBountyCandidate(record);
   const rewardRanges = Array.isArray(record.metadata?.reward_ranges) ? record.metadata.reward_ranges : [];
@@ -218,6 +247,8 @@ See risk_register.json.
 - Platform: ${record.site}
 - Source URL: ${record.siteUrl}
 - Retrieved At: ${candidate.retrieved_at}
+- Created/Listed: ${sourceCreatedLabel(record)}
+- Expiration/Deadline: ${sourceExpirationLabel(record)}
 - Intake Source: ${record.metadata?.source || record.metadata?.web_source_key || "unknown"}
 - Adapter: ${record.metadata?.intake_adapter || record.metadata?.adapter_strategy || "unknown"}
 - Official Source Verified: ${record.metadata?.source_evidence?.official_source ? "yes" : "pending operator verification"}
@@ -306,6 +337,8 @@ ${AGENT_KNOWLEDGE_PACKS.map((pack) => `- ${pack.agentId}: ${pack.capabilities.jo
 Platform: ${record.site}
 Source URL: ${record.siteUrl}
 Retrieved At: ${candidate.retrieved_at}
+Created/Listed: ${sourceCreatedLabel(record)}
+Expiration/Deadline: ${sourceExpirationLabel(record)}
 
 ## Known Scope
 ${record.scope}
