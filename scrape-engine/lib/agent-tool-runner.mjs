@@ -11,7 +11,9 @@ function augmentedEnv(env = process.env) {
   const extraPaths = [
     env.APPDATA ? join(env.APPDATA, "Python", "Python314", "Scripts") : "",
     env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "Programs", "FoundryPortable") : "",
-    env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "Programs", "OllamaPortable") : ""
+    env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "Programs", "OllamaPortable") : "",
+    "/opt/agent-tools/bin",
+    "/opt/foundry"
   ].filter((item) => item && existsSync(item));
   const delimiter = process.platform === "win32" ? ";" : ":";
   return {
@@ -22,8 +24,8 @@ function augmentedEnv(env = process.env) {
 }
 
 export async function commandAvailable(command) {
-  const lookupCommand = process.platform === "win32" ? "where.exe" : "command";
-  const lookupArgs = process.platform === "win32" ? [command] : ["-v", command];
+  const lookupCommand = process.platform === "win32" ? "where.exe" : "sh";
+  const lookupArgs = process.platform === "win32" ? [command] : ["-c", `command -v ${shellQuote(command)}`];
   const result = await runProcess(lookupCommand, lookupArgs, { timeoutMs: 10000, rejectOnExit: false });
   return result.exitCode === 0;
 }
@@ -214,4 +216,8 @@ function stripHtml(value = "") {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }

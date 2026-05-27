@@ -25,6 +25,13 @@ RUN curl -L --fail --retry 3 -o /tmp/foundry.tar.gz https://github.com/foundry-r
   && rm /tmp/foundry.tar.gz
 
 ENV PATH="/opt/agent-tools/bin:/opt/foundry:${PATH}"
+
+RUN git --version \
+  && node --version \
+  && semgrep --version \
+  && slither --version \
+  && forge --version
+
 WORKDIR /app
 
 COPY package.json ./package.json
