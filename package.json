@@ -1,0 +1,12 @@
+{
+  "name": "aa-bounties-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "brain:preflight": "node ./scrape-engine/brain-preflight.mjs",
+    "tools:preflight": "node ./scrape-engine/tools-preflight.mjs",
+    "tools:doctor": "node ./scrape-engine/tools-preflight.mjs --doctor",
+    "scrape:dry": "node ./scrape-engine/run-once.mjs"
+  }
+}

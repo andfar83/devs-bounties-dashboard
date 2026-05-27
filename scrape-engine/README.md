@@ -122,6 +122,32 @@ Deadline-based sources are filtered before they can enter Supabase. A candidate 
 
 Atlas now scrapes a broader official pool before selecting review candidates. Fast collects about 24 raw candidates, Deep about 32, and Full about 48, then ranks and interleaves the best 10 across sources so the queue is not dominated by one portal.
 
+## Agent Tools, Brain, Memory, and Reasoning
+
+The agents now have a project-level tool layer:
+
+- Eyes: official source fetcher, public URL evidence capture, repo probe.
+- Hands: external command runner for Git, Semgrep, Slither, Foundry, Node tests, and future tools.
+- Brain: provider-configurable gateway for local Ollama or remote OpenAI-compatible open-weight APIs.
+- Memory: local package memory/evidence writer for later Supabase sync.
+- Reasoning: deterministic quality gates, decision contracts, and evidence-first policies.
+
+Preflight the toolbelt:
+
+```powershell
+node .\tools-preflight.mjs --doctor
+```
+
+From the repo root, PowerShell may block `npm.ps1`. Use either direct Node scripts or `npm.cmd`:
+
+```powershell
+npm.cmd run tools:doctor
+npm.cmd run brain:preflight
+```
+
+Missing external tools do not crash the dashboard. They are reported as `missing`, and the app must not mark a package
+evidence-ready if the required analysis tool for that bounty type did not run.
+
 ## Open-Source Agent Brain Adapter
 
 The production dashboard can use a free/open-source brain through an Ollama-compatible endpoint. This keeps bounty data away from paid third-party model APIs by default.
@@ -144,7 +170,30 @@ $env:AGENT_MODEL_OPS="qwen2.5:7b"
 node .\brain-preflight.mjs
 ```
 
-Important deployment note: Vercel cannot call `127.0.0.1` on your computer. For deployed production, run the brain as a private/self-hosted HTTPS service and set `AGENT_BRAIN_BASE_URL` in Vercel to that endpoint. If no endpoint is configured, the adapter stays disabled and the app keeps using deterministic safety gates instead of inventing agent output.
+Remote open-weight setup example:
+
+```powershell
+$env:AGENT_BRAIN_ENABLED="true"
+$env:AGENT_BRAIN_PROVIDER="together"
+$env:AGENT_BRAIN_BASE_URL="https://api.together.xyz/v1"
+$env:AGENT_BRAIN_API_KEY="<server-side-key>"
+$env:AGENT_MODEL_SCOUT="Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8"
+$env:AGENT_MODEL_FEASIBILITY="deepseek-ai/DeepSeek-V3.1"
+$env:AGENT_MODEL_BUILDER="Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8"
+$env:AGENT_MODEL_OPS="deepseek-ai/DeepSeek-V3.1"
+node .\brain-preflight.mjs
+```
+
+Supported provider presets:
+
+- `ollama`: local or self-hosted Ollama, `/api/generate`.
+- `together`: `https://api.together.xyz/v1`.
+- `fireworks`: `https://api.fireworks.ai/inference/v1`.
+- `groq`: `https://api.groq.com/openai/v1`.
+- `openrouter`: `https://openrouter.ai/api/v1`.
+- `openai_compatible`: any compatible `/chat/completions` endpoint.
+
+Important deployment note: Vercel cannot call `127.0.0.1` on your computer. For deployed production, use a remote HTTPS brain endpoint and set `AGENT_BRAIN_PROVIDER`, `AGENT_BRAIN_BASE_URL`, `AGENT_BRAIN_API_KEY`, and the per-agent model IDs in Vercel. If no endpoint is configured, the adapter stays disabled and the app keeps using deterministic safety gates instead of inventing agent output.
 
 Every web run stores public source labels and source URLs only. It does not write private local file paths to Supabase metadata.
 

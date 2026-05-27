@@ -1,0 +1,11 @@
+﻿{
+  "name": "aa-bounties-agent-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ./src/server.mjs",
+    "worker": "node ./src/worker-loop.mjs",
+    "health": "node ./src/health-check.mjs"
+  }
+}

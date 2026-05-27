@@ -1,0 +1,45 @@
+﻿services:
+  - type: web
+    name: aa-bounties-agent-worker
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./agent-worker/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: WORKER_POLL_ENABLED
+        value: true
+      - key: WORKER_POLL_INTERVAL_MS
+        value: 10000
+      - key: WORKER_MAX_ATTEMPTS
+        value: 2
+      - key: WORKER_STORAGE_BUCKET
+        value: bounty-artifacts
+      - key: WORKER_WORKDIR
+        value: /tmp/aa-bounties-worker
+      - key: WORKER_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_TARGET_USER_ID
+        sync: false
+      - key: AGENT_BRAIN_ENABLED
+        value: false
+      - key: AGENT_BRAIN_PROVIDER
+        value: together
+      - key: AGENT_BRAIN_BASE_URL
+        value: https://api.together.xyz/v1
+      - key: AGENT_BRAIN_API_KEY
+        sync: false
+      - key: AGENT_MODEL_SCOUT
+        value: Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+      - key: AGENT_MODEL_FEASIBILITY
+        value: deepseek-ai/DeepSeek-V3.1
+      - key: AGENT_MODEL_BUILDER
+        value: Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+      - key: AGENT_MODEL_OPS
+        value: deepseek-ai/DeepSeek-V3.1
